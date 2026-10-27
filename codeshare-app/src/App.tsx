@@ -36,6 +36,8 @@ import {
   sendChatMessage,
   subscribeToChatMessages,
 } from './utils/chatSync';
+import { downloadAttachedMediaFile, downloadCodeText } from './utils/fileDownload';
+import { getCachedMediaForRoom } from './utils/indexedDbStorage';
 import { Check, Info } from 'lucide-react';
 
 export function App() {
@@ -145,10 +147,15 @@ export function App() {
   const attachedMediaListRef = useRef(attachedMediaList);
   attachedMediaListRef.current = attachedMediaList;
 
+  // Document loaded state to prevent initial empty state from overwriting saved documents
+  const [isDocLoaded, setIsDocLoaded] = useState<boolean>(false);
+  const isDocLoadedRef = useRef<boolean>(false);
+
   // Ensure documents are synchronously persisted even when the user closes the browser/tab
   useEffect(() => {
     const handleImmediateFlush = () => {
-      if (!codeshareIdRef.current) return;
+      // Never flush if document hasn't loaded or id is missing
+      if (!codeshareIdRef.current || !isDocLoadedRef.current) return;
       saveDocument({
         id: codeshareIdRef.current,
         title: docTitleRef.current,
@@ -263,6 +270,7 @@ export function App() {
     setDocTitle(formatted);
     setContent('');
     setAttachedMedia(null);
+    setAttachedMediaList([]);
     setActiveTab('code');
     setExpiration('never');
     setViewOnly(false);
@@ -270,6 +278,8 @@ export function App() {
     setIsShareOpen(false);
     setIsFileUploadOpen(false);
     setEncryptionKey(newKey);
+    setIsDocLoaded(true);
+    isDocLoadedRef.current = true;
 
     // Save initial document record immediately
     saveDocument({
@@ -305,23 +315,48 @@ export function App() {
       const slug = slugMatch[1];
       if (slug !== 'login' && slug !== 'register') {
         setCodeshareId(slug);
+        setIsDocLoaded(false);
+        isDocLoadedRef.current = false;
 
-        // Fetch latest document from server relay / local cache
+        // 1. Immediately check IndexedDB for any cached media files (0ms instant)
+        getCachedMediaForRoom(slug).then((localMedia) => {
+          if (localMedia.length > 0) {
+            setAttachedMediaList(localMedia);
+            setAttachedMedia(localMedia[0]);
+          }
+        });
+
+        // 2. Fetch latest document from Firestore / local cache
         fetchDocument(slug).then((docData) => {
           if (docData) {
             if (docData.title) setDocTitle(docData.title);
             if (typeof docData.content === 'string') setContent(docData.content);
             if (docData.settings) setSettings(docData.settings);
             if (docData.expiration) setExpiration(docData.expiration);
+
+            // Merge media list without losing in-memory decrypted blobs
             if (docData.attachedMediaList && docData.attachedMediaList.length > 0) {
-              setAttachedMediaList(docData.attachedMediaList);
-              setAttachedMedia(docData.attachedMediaList[0]);
+              setAttachedMediaList((prev) => {
+                return docData.attachedMediaList!.map((m) => {
+                  const existing = prev.find((p) => p.id === m.id);
+                  return existing && existing.dataUrl ? existing : m;
+                });
+              });
+              if (!attachedMediaRef.current && docData.attachedMediaList[0]) {
+                setAttachedMedia(docData.attachedMediaList[0]);
+              }
             } else if (docData.attachedMedia) {
               setAttachedMedia(docData.attachedMedia);
               setAttachedMediaList([docData.attachedMedia]);
             }
-            if (docData.encryptionKey && !window.location.hash.startsWith('#key=')) {
+
+            // Restore encryption key and sync to URL hash if missing
+            const effectiveKey = docData.encryptionKey || encryptionKeyRef.current;
+            if (docData.encryptionKey) {
               setEncryptionKey(docData.encryptionKey);
+            }
+            if (effectiveKey && !window.location.hash.includes('key=')) {
+              window.history.replaceState(null, '', `/${slug}#key=${effectiveKey}`);
             }
           } else {
             // First time opening this slug
@@ -334,28 +369,11 @@ export function App() {
             });
             setDocTitle(formatted);
           }
-        });
 
-        // Also check if there's attached media in local storage for this session
-        try {
-          const cachedList = localStorage.getItem(`codeshare_media_list_${slug}`);
-          if (cachedList) {
-            const parsedList = JSON.parse(cachedList) as AttachedMedia[];
-            if (parsedList.length > 0) {
-              setAttachedMediaList(parsedList);
-              setAttachedMedia(parsedList[0]);
-            }
-          } else {
-            const cachedMedia = localStorage.getItem(`codeshare_media_${slug}`);
-            if (cachedMedia) {
-              const parsed = JSON.parse(cachedMedia) as AttachedMedia;
-              setAttachedMedia(parsed);
-              setAttachedMediaList([parsed]);
-            }
-          }
-        } catch {
-          // ignore
-        }
+          // Mark document as safely loaded so auto-save can engage
+          setIsDocLoaded(true);
+          isDocLoadedRef.current = true;
+        });
 
         return;
       }
@@ -371,18 +389,21 @@ export function App() {
     const unsubscribe = subscribeToRoomSync(
       codeshareId,
       tabIdRef.current,
-      () => ({
-        id: codeshareId,
-        title: docTitleRef.current,
-        content: contentRef.current,
-        settings: settingsRef.current,
-        expiration: expirationRef.current,
-        encryptionKey: encryptionKeyRef.current,
-        attachedMedia: attachedMediaRef.current,
-        attachedMediaList: attachedMediaListRef.current,
-        timestamp: Date.now(),
-        senderId: tabIdRef.current,
-      }),
+      () => {
+        if (!isDocLoadedRef.current) return null;
+        return {
+          id: codeshareId,
+          title: docTitleRef.current,
+          content: contentRef.current,
+          settings: settingsRef.current,
+          expiration: expirationRef.current,
+          encryptionKey: encryptionKeyRef.current,
+          attachedMedia: attachedMediaRef.current,
+          attachedMediaList: attachedMediaListRef.current,
+          timestamp: Date.now(),
+          senderId: tabIdRef.current,
+        };
+      },
       (remoteData) => {
         isApplyingRemoteUpdateRef.current = true;
         if (remoteData.content !== contentRef.current) {
@@ -480,9 +501,9 @@ export function App() {
     });
   }, []);
 
-  // Fast responsive auto-save with coalescing (latency reduced to 40ms)
+  // Fast responsive auto-save with coalescing (only active after document has loaded)
   useEffect(() => {
-    if (!codeshareId) return;
+    if (!codeshareId || !isDocLoaded) return;
     if (isApplyingRemoteUpdateRef.current) return;
 
     const timeoutId = window.setTimeout(() => {
@@ -504,7 +525,7 @@ export function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [codeshareId, docTitle, content, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
+  }, [codeshareId, isDocLoaded, docTitle, content, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Handle Expiration updates (optional expiration)
   const handleUpdateExpiration = (exp: ExpirationOption) => {
@@ -611,34 +632,39 @@ export function App() {
     showToast('Attached file removed.');
   };
 
-  // Handle download
-  const handleDownload = (media?: AttachedMedia) => {
-    const targetMedia = media || attachedMediaList.find((m) => m.id === activeTab) || attachedMedia;
-    if (activeTab !== 'code' && targetMedia) {
-      // Download attached PDF or image
-      const link = document.createElement('a');
-      link.href = targetMedia.dataUrl;
-      link.download = targetMedia.name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showToast(`Downloaded ${targetMedia.name}`);
+  // Handle robust download
+  const handleDownload = async (media?: AttachedMedia) => {
+    const targetMedia = media || (activeTab !== 'code' ? attachedMediaList.find((m) => m.id === activeTab) : null) || attachedMedia;
+    if (media || (activeTab !== 'code' && targetMedia)) {
+      if (!targetMedia) return;
+      try {
+        let fileToDownload = targetMedia;
+        // If dataUrl is missing in memory, fetch/decrypt from cache or cloud
+        if (!fileToDownload.dataUrl || fileToDownload.dataUrl.length < 50) {
+          showToast('Preparing download...', 'info');
+          const decrypted = await fetchAndDecryptMediaFromFirebase(codeshareId || '', encryptionKey, targetMedia.id);
+          if (decrypted && decrypted.dataUrl) {
+            fileToDownload = decrypted;
+          }
+        }
+        await downloadAttachedMediaFile(fileToDownload);
+        showToast(`Downloaded ${fileToDownload.name}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Error downloading file';
+        showToast(msg, 'info');
+      }
       return;
     }
 
     // Download code text
-    const ext = getExtensionForMode(settings.modeName);
-    const fileName = `${docTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || codeshareId || 'codeshare'}.${ext}`;
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    showToast(`Downloaded ${fileName}`);
+    try {
+      const ext = getExtensionForMode(settings.modeName);
+      const fileName = `${docTitle.replace(/[^a-zA-Z0-9_-]/g, '_') || codeshareId || 'codeshare'}.${ext}`;
+      downloadCodeText(content, fileName);
+      showToast(`Downloaded ${fileName}`);
+    } catch {
+      showToast('Error downloading code file', 'info');
+    }
   };
 
   // Handle Save Codeshare action

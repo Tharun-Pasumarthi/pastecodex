@@ -12,6 +12,12 @@ import { getFirestore, doc, setDoc, getDoc, deleteDoc, type Firestore } from 'fi
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import type { AttachedMedia } from '../types';
 import { encryptPayload, decryptPayload } from './crypto';
+import {
+  cacheMediaInIndexedDB,
+  getCachedMediaForRoom,
+  getSingleCachedMedia,
+  deleteMediaFromIndexedDB,
+} from './indexedDbStorage';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -172,7 +178,7 @@ export async function uploadEncryptedMediaToFirebase(
     await fallbackUpload(blobDocId, payload);
   }
 
-  return {
+  const resultMedia: AttachedMedia = {
     id: mediaId,
     name: file.name,
     type: isPdf ? 'pdf' : 'image',
@@ -183,6 +189,11 @@ export async function uploadEncryptedMediaToFirebase(
     iv,
     uploadedAt: payload.uploadedAt,
   };
+
+  // Cache immediately in local IndexedDB for instant 0ms access
+  cacheMediaInIndexedDB(codeshareId, resultMedia);
+
+  return resultMedia;
 }
 
 /**
@@ -193,6 +204,14 @@ export async function fetchAndDecryptMediaFromFirebase(
   encryptionKey: string,
   mediaId?: string
 ): Promise<AttachedMedia | null> {
+  // 1. Check local IndexedDB first for instant 0ms retrieval
+  if (mediaId) {
+    const cached = await getSingleCachedMedia(codeshareId, mediaId);
+    if (cached && cached.dataUrl && cached.dataUrl.length > 50) {
+      return cached;
+    }
+  }
+
   try {
     let payload: EncryptedFirebasePayload | null = null;
     const services = getFirebaseServices();
@@ -244,7 +263,7 @@ export async function fetchAndDecryptMediaFromFirebase(
       encryptionKey
     );
 
-    return {
+    const decryptedMedia: AttachedMedia = {
       id: mediaId || ('med_fb_' + codeshareId),
       name: payload.name,
       type: payload.type,
@@ -255,6 +274,11 @@ export async function fetchAndDecryptMediaFromFirebase(
       iv: payload.iv,
       uploadedAt: payload.uploadedAt,
     };
+
+    // Cache decrypted media in IndexedDB so subsequent visits load instantly
+    cacheMediaInIndexedDB(codeshareId, decryptedMedia);
+
+    return decryptedMedia;
   } catch (err) {
     console.warn(`[Firebase] Could not fetch or decrypt media for ${codeshareId}:`, err);
     return null;
@@ -262,7 +286,7 @@ export async function fetchAndDecryptMediaFromFirebase(
 }
 
 /**
- * Fetch and decrypt multiple media files in parallel
+ * Fetch and decrypt multiple media files in parallel using IndexedDB cache
  */
 export async function fetchAndDecryptAllMediaFromFirebase(
   codeshareId: string,
@@ -270,10 +294,23 @@ export async function fetchAndDecryptAllMediaFromFirebase(
   mediaListMeta: AttachedMedia[]
 ): Promise<AttachedMedia[]> {
   if (!mediaListMeta || mediaListMeta.length === 0) return [];
+
+  // Check IndexedDB cache for room
+  const localCached = await getCachedMediaForRoom(codeshareId);
+  const localMap = new Map<string, AttachedMedia>();
+  localCached.forEach((m) => localMap.set(m.id, m));
+
   const results = await Promise.all(
     mediaListMeta.map(async (meta) => {
-      // If already has dataUrl, keep it
+      // 1. If already in memory with dataUrl, keep it
       if (meta.dataUrl && meta.dataUrl.length > 50) return meta;
+
+      // 2. If in IndexedDB cache, load instantly
+      if (localMap.has(meta.id)) {
+        return localMap.get(meta.id)!;
+      }
+
+      // 3. Otherwise fetch from cloud and decrypt
       const decrypted = await fetchAndDecryptMediaFromFirebase(codeshareId, encryptionKey, meta.id);
       return decrypted || meta;
     })
@@ -282,12 +319,15 @@ export async function fetchAndDecryptAllMediaFromFirebase(
 }
 
 /**
- * Delete media from Firebase
+ * Delete media from Firebase and IndexedDB
  */
 export async function deleteMediaFromFirebase(
   codeshareId: string,
   mediaId?: string
 ): Promise<boolean> {
+  // Delete from local IndexedDB
+  deleteMediaFromIndexedDB(codeshareId, mediaId);
+
   const services = getFirebaseServices();
   const targetDocId = mediaId ? `${codeshareId}_${mediaId}` : codeshareId;
 
