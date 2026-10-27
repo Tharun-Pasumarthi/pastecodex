@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Zero-knowledge encrypted media blobs (AES-256 encrypted on client)
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

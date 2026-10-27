@@ -90,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Quick Create New Page Button */}
         {onNewCodeshare && (
           <button
-            className="btn btn-sm btn-secondary"
+            className="btn btn-sm btn-secondary nav-action-btn"
             onClick={onNewCodeshare}
             title="Create a new PasteCodex room"
             style={{
@@ -99,11 +99,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               alignItems: 'center',
               gap: '0.35rem',
               fontSize: '0.775rem',
-              marginLeft: '0.5rem',
+              marginLeft: '0.25rem',
             }}
           >
             <Plus size={14} color="#60a5fa" />
-            <span>New</span>
+            <span className="nav-btn-text">New</span>
           </button>
         )}
 
@@ -116,6 +116,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Content Tabs (Code vs Attached PDF/Image) */}
         {isEditor && attachedMedia && onTabChange && (
           <div
+            className="header__tabs"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -123,7 +124,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               padding: '2px',
               borderRadius: '6px',
               border: '1px solid var(--border-light)',
-              marginLeft: '0.75rem',
+              marginLeft: '0.5rem',
             }}
           >
             <button
@@ -144,7 +145,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }}
             >
               <Code2 size={13} />
-              <span>Code</span>
+              <span className="nav-btn-text">Code</span>
             </button>
 
             <button
@@ -170,7 +171,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               ) : (
                 <ImageIcon size={13} color={activeTab === 'image' ? '#fff' : '#3b82f6'} />
               )}
-              <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span className="header-tab-filename" style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {attachedMedia.name}
               </span>
             </button>
@@ -195,7 +196,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 title="Expiration is optional. Currently set to Never expire. Click to configure."
               >
                 <ShieldCheck size={13} color="#10b981" />
-                <span>Never Expires</span>
+                <span className="badge-expire-text">Permanent</span>
               </div>
             ) : (
               <div
@@ -205,40 +206,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                 title={`This link auto-expires in ${expiration}. Click to change or make permanent.`}
               >
                 <Clock size={13} color="#f59e0b" />
-                <span>Expires in {expiration}</span>
+                <span className="badge-expire-text">{expiration}</span>
               </div>
             )}
 
             {/* Attach File Button */}
             <button
-              className="btn btn-sm btn-secondary"
+              className="btn btn-sm btn-secondary nav-action-btn"
               onClick={onOpenFileUpload}
               title="Attach PDF or Image to this encrypted Codeshare"
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <Paperclip size={14} color="#3b82f6" />
-              <span>{attachedMedia ? 'Replace File' : 'Attach File'}</span>
+              <span className="nav-btn-text">{attachedMedia ? 'File' : 'Attach'}</span>
             </button>
 
             {/* Save Button with Visual Feedback */}
             <button
-              className={`btn btn-sm ${isSaved ? 'btn-secondary' : 'btn-primary'}`}
+              className={`btn btn-sm nav-action-btn ${isSaved ? 'btn-secondary' : 'btn-primary'}`}
               onClick={onSaveCodeshare}
               title={isSaved ? "Saved in your library (click to re-sync)" : "Save to your PasteCodex library"}
               style={isSaved ? { borderColor: '#10b981', color: '#34d399' } : undefined}
             >
               {isSaved ? <BookmarkCheck size={14} color="#10b981" /> : <Bookmark size={14} />}
-              <span>{isSaved ? 'Saved ✓' : 'Save PasteCodex'}</span>
+              <span className="nav-btn-text">{isSaved ? 'Saved' : 'Save'}</span>
             </button>
 
             <button
-              className="btn btn-sm btn-secondary"
+              className="btn btn-sm btn-secondary nav-action-btn"
               onClick={onOpenShare}
               title="Share URL with collaborators"
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <Users size={14} />
-              <span>Share</span>
+              <span className="nav-btn-text">Share</span>
               {collaborators.length > 0 && (
                 <span style={{
                   fontSize: '0.75rem',
@@ -255,13 +256,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Instant Quick-Copy Button */}
             {shareUrl && (
               <button
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-secondary nav-action-btn"
                 onClick={handleQuickCopy}
                 title="Instantly copy share link"
                 style={{ padding: '0.4rem 0.6rem' }}
               >
                 {quickCopied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
-                <span style={{ fontSize: '0.75rem' }}>{quickCopied ? 'Copied!' : 'Copy'}</span>
+                <span className="nav-btn-text" style={{ fontSize: '0.75rem' }}>{quickCopied ? 'Copied' : 'Copy'}</span>
               </button>
             )}
           </>

@@ -12,7 +12,12 @@ import { Login } from './components/Login';
 import { Register } from './components/Register';
 import type { EditorSettings, Collaborator, User, AttachedMedia, ActiveTab, ExpirationOption } from './types';
 import { generateCodeshareId, getExtensionForMode } from './utils/slug';
-import { generateEncryptionKey } from './utils/crypto';
+import {
+  generateEncryptionKey,
+  generateShareableUrl,
+  parseHashParams,
+  unpackDocumentFromHashToken,
+} from './utils/crypto';
 import { fetchAndDecryptMediaFromFirebase, deleteMediaFromFirebase } from './utils/firebaseStorage';
 import { saveDocument, fetchDocument, subscribeToRoomSync, type DocumentSyncData } from './utils/documentSync';
 import { Check, Info } from 'lucide-react';
@@ -39,7 +44,7 @@ export function App() {
       // ignore
     }
     return {
-      id: 'TWU6YW5vbjo' + Math.random().toString(36).substr(2, 9),
+      id: 'usr_' + Math.random().toString(36).substr(2, 9),
       name: '',
       email: '',
       isAnonymous: true,
@@ -89,9 +94,7 @@ export function App() {
   });
 
   const [collaborators] = useState<Collaborator[]>([
-    { id: '1', name: 'You', color: '#3b82f6', isMe: true },
-    { id: '2', name: 'Alex (Peer)', color: '#10b981' },
-    { id: '3', name: 'Taylor', color: '#f59e0b' },
+    { id: 'me', name: 'You', color: '#3b82f6', isMe: true },
   ]);
 
   // Keep fresh mutable references for subscription callbacks
@@ -108,6 +111,37 @@ export function App() {
   const attachedMediaRef = useRef(attachedMedia);
   attachedMediaRef.current = attachedMedia;
 
+  // Process and unpack zero-knowledge URL hash fragments (#key=...&d=...)
+  const processUrlHash = useCallback(async (hashStr: string) => {
+    if (!hashStr) return;
+    const { key, docToken } = parseHashParams(hashStr);
+    if (key) {
+      setEncryptionKey(key);
+    }
+    if (docToken && key) {
+      const unpacked = await unpackDocumentFromHashToken<{
+        c?: string;
+        t?: string;
+        m?: string;
+        med?: AttachedMedia;
+      }>(docToken, key);
+      if (unpacked) {
+        if (typeof unpacked.c === 'string') {
+          setContent(unpacked.c);
+        }
+        if (unpacked.t) {
+          setDocTitle(unpacked.t);
+        }
+        if (unpacked.m) {
+          setSettings((prev) => ({ ...prev, modeName: unpacked.m as any }));
+        }
+        if (unpacked.med) {
+          setAttachedMedia(unpacked.med);
+        }
+      }
+    }
+  }, []);
+
   // Robust URL navigation that handles path, query, and hash fragments independently
   const navigate = useCallback((pathWithQueryAndHash: string) => {
     const hashIndex = pathWithQueryAndHash.indexOf('#');
@@ -121,33 +155,30 @@ export function App() {
     window.history.pushState({}, '', pathWithQueryAndHash);
     setCurrentPath(path);
     setCurrentQuery(query ? `?${query}` : '');
-    if (hash.startsWith('#key=')) {
-      setEncryptionKey(hash.slice(5));
+    if (hash) {
+      processUrlHash(hash);
     }
-  }, []);
+  }, [processUrlHash]);
 
   // Listen to browser popstate (back/forward)
   useEffect(() => {
     const handlePopState = () => {
       setCurrentPath(window.location.pathname || '/');
       setCurrentQuery(window.location.search || '');
-      if (window.location.hash.startsWith('#key=')) {
-        setEncryptionKey(window.location.hash.slice(5));
+      if (window.location.hash) {
+        processUrlHash(window.location.hash);
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [processUrlHash]);
 
   // Parse URL hash on initial load
   useEffect(() => {
-    if (window.location.hash.startsWith('#key=')) {
-      const parsedKey = window.location.hash.slice(5);
-      if (parsedKey) {
-        setEncryptionKey(parsedKey);
-      }
+    if (window.location.hash) {
+      processUrlHash(window.location.hash);
     }
-  }, []);
+  }, [processUrlHash]);
 
   // Dedicated handler to reliably create a fresh new codeshare session
   const handleCreateNewCodeshare = useCallback(() => {
@@ -342,7 +373,7 @@ export function App() {
       // ignore
     }
     setCurrentUser({
-      id: 'TWU6YW5vbjo' + Math.random().toString(36).substr(2, 9),
+      id: 'usr_' + Math.random().toString(36).substr(2, 9),
       name: '',
       email: '',
       isAnonymous: true,
@@ -495,8 +526,31 @@ export function App() {
   const queryParams = new URLSearchParams(currentQuery);
   const saveCodeshareId = queryParams.get('saveCodeshare') || undefined;
 
-  // Active full share URL for instant copy
-  const shareUrl = codeshareId ? `${window.location.origin}/${codeshareId}#key=${encryptionKey}` : '';
+  // Active full share URL with zero-knowledge encrypted snapshot token
+  const [shareUrl, setShareUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!codeshareId || !encryptionKey) {
+      setShareUrl('');
+      return;
+    }
+    let isCancelled = false;
+    generateShareableUrl(
+      codeshareId,
+      encryptionKey,
+      content,
+      docTitle,
+      settings.modeName,
+      attachedMedia
+    ).then((url) => {
+      if (!isCancelled) {
+        setShareUrl(url);
+      }
+    });
+    return () => {
+      isCancelled = true;
+    };
+  }, [codeshareId, encryptionKey, content, docTitle, settings.modeName, attachedMedia]);
 
   return (
     <div className="app-container">
@@ -634,6 +688,7 @@ export function App() {
             attachedMedia={attachedMedia}
             expiration={expiration}
             onUpdateExpiration={handleUpdateExpiration}
+            shareUrl={shareUrl}
           />
 
           <FileUploadModal

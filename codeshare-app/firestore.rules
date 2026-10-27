@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Zero-knowledge encrypted documents and blobs
+    // Payload is encrypted on client with AES-256 before upload
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

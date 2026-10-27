@@ -56,8 +56,19 @@ export async function saveDocument(docData: DocumentSyncData): Promise<void> {
   try {
     const services = getFirebaseServices();
     if (services) {
-      const cleanDoc = { ...docData };
-      if (cleanDoc.attachedMedia === undefined) delete cleanDoc.attachedMedia;
+      const cleanDoc: any = { ...docData };
+      if (!cleanDoc.attachedMedia) {
+        delete cleanDoc.attachedMedia;
+      } else if (cleanDoc.attachedMedia.dataUrl && cleanDoc.attachedMedia.dataUrl.length > 700000) {
+        // Exceeds Firestore 1MB document limit - store metadata safely
+        cleanDoc.attachedMedia = {
+          name: cleanDoc.attachedMedia.name,
+          type: cleanDoc.attachedMedia.type,
+          mimeType: cleanDoc.attachedMedia.mimeType,
+          size: cleanDoc.attachedMedia.size,
+          dataUrl: '',
+        };
+      }
       setDoc(doc(services.db, 'codeshare_documents', docData.id), cleanDoc).catch(() => {});
     }
   } catch {
@@ -101,10 +112,11 @@ export async function fetchDocument(id: string): Promise<DocumentSyncData | null
     // Firestore error
   }
 
-  // 2. Try server relay to get latest remote updates
+  // 2. Try server relay to get latest remote updates (only if returning valid json)
   try {
     const res = await fetch(`/api/documents/${id}`);
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const serverDoc = (await res.json()) as DocumentSyncData;
       if (serverDoc && typeof serverDoc.content === 'string') {
         try {
@@ -231,7 +243,8 @@ export function subscribeToRoomSync(
 
     try {
       const res = await fetch(`/api/documents/${codeshareId}`);
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const serverDoc = (await res.json()) as DocumentSyncData;
         if (
           serverDoc &&

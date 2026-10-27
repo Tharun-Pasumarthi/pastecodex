@@ -815,3 +815,189 @@ select.form-control {
 .footer a:hover {
   color: #fff;
 }
+
+/* ==========================================================================
+   Responsive Multi-Device Layout System (Mobile, Tablet, Desktop)
+   ========================================================================== */
+
+/* Tablet & Mobile (<= 768px) */
+@media (max-width: 768px) {
+  :root {
+    --header-height: 52px;
+    --sidebar-width: 44px;
+  }
+
+  .header {
+    padding: 0 0.65rem;
+  }
+
+  .header__left {
+    gap: 0.5rem;
+  }
+
+  .header__logo {
+    font-size: 1rem;
+    gap: 0.35rem;
+  }
+
+  .header__logo-badge {
+    display: none;
+  }
+
+  .header__title {
+    max-width: 120px;
+    font-size: 0.8rem;
+    padding-left: 0.35rem;
+  }
+
+  .header__right {
+    gap: 0.35rem;
+  }
+
+  .header__tabs {
+    margin-left: 0.25rem !important;
+  }
+
+  .header-tab-filename {
+    max-width: 70px !important;
+  }
+
+  .badge-expire {
+    padding: 0.2rem 0.45rem;
+    font-size: 0.75rem;
+  }
+
+  .btn-sm {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.775rem;
+  }
+
+  /* Responsive Sidebar Drawer */
+  .cs-sidebar {
+    position: static;
+  }
+
+  .cs-sidebar-nav {
+    width: var(--sidebar-width);
+    padding: 0.5rem 0;
+  }
+
+  .cs-sidebar.is-open .cs-sidebar-panel {
+    position: fixed;
+    top: var(--header-height);
+    right: var(--sidebar-width);
+    bottom: 0;
+    width: min(340px, calc(100vw - var(--sidebar-width)));
+    max-width: calc(100vw - var(--sidebar-width));
+    z-index: 90;
+    box-shadow: -10px 0 25px rgba(0, 0, 0, 0.6);
+  }
+
+  .cs-panel-content {
+    width: 100%;
+  }
+
+  /* Responsive Modals */
+  .modal-dialog {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    padding: 0.85rem 1rem;
+  }
+
+  .modal-body {
+    padding: 1rem;
+  }
+
+  .modal-footer {
+    padding: 0.75rem 1rem;
+  }
+
+  /* Landing Page */
+  .landing-hero {
+    padding: 3rem 1rem 2.5rem;
+  }
+
+  .landing-hero h1 {
+    font-size: 2.25rem;
+    letter-spacing: -1px;
+  }
+
+  .landing-hero h2 {
+    font-size: 1.05rem;
+    margin-bottom: 2rem;
+  }
+
+  .landing-features {
+    padding: 3rem 1rem;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .auth-card {
+    padding: 1.5rem;
+  }
+}
+
+/* Small Mobile (<= 480px) */
+@media (max-width: 480px) {
+  :root {
+    --header-height: 50px;
+    --sidebar-width: 40px;
+  }
+
+  .header {
+    padding: 0 0.4rem;
+  }
+
+  .header__title {
+    display: none;
+  }
+
+  .nav-btn-text {
+    display: none;
+  }
+
+  .nav-action-btn {
+    padding: 0.35rem 0.45rem !important;
+  }
+
+  .badge-expire-text {
+    display: none;
+  }
+
+  .badge-expire {
+    padding: 0.25rem 0.35rem;
+  }
+
+  .url-copy-group {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .url-copy-group .btn {
+    width: 100%;
+  }
+
+  .cm-theme {
+    font-size: 13.5px !important;
+  }
+
+  .editor-statusbar {
+    padding: 0 0.5rem;
+    font-size: 0.725rem;
+  }
+
+  .editor-statusbar__group:last-child {
+    display: none;
+  }
+
+  .landing-hero h1 {
+    font-size: 1.85rem;
+  }
+}
+

@@ -14,6 +14,7 @@ interface ShareModalProps {
   attachedMedia?: AttachedMedia | null;
   expiration: ExpirationOption;
   onUpdateExpiration: (exp: ExpirationOption) => void;
+  shareUrl?: string;
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({
@@ -27,6 +28,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   attachedMedia,
   expiration,
   onUpdateExpiration,
+  shareUrl: externalShareUrl,
 }) => {
   const [copied, setCopied] = useState(false);
   const [useEncryptedLink, setUseEncryptedLink] = useState(true);
@@ -34,7 +36,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   if (!isOpen) return null;
 
   const baseUrl = `${window.location.origin}/${codeshareId}`;
-  const shareUrl = useEncryptedLink ? `${baseUrl}#key=${encryptionKey}` : baseUrl;
+  const shareUrl = useEncryptedLink
+    ? (externalShareUrl || `${baseUrl}#key=${encryptionKey}`)
+    : baseUrl;
 
   // Instant zero-latency copy with immediate visual feedback
   const handleCopy = () => {

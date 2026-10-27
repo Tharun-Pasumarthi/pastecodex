@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, FileText, Image as ImageIcon, Shield, Check, AlertCircle, Sparkles, Flame } from 'lucide-react';
+import { X, Upload, FileText, Image as ImageIcon, Shield, Check, AlertCircle, Flame } from 'lucide-react';
 import type { AttachedMedia } from '../types';
 import { uploadEncryptedMediaToFirebase } from '../utils/firebaseStorage';
 
@@ -100,38 +100,6 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
     }
   };
 
-  // Generate a sample SVG or demo PDF for instant zero-friction testing
-  const handleLoadSample = (sampleType: 'image' | 'pdf') => {
-    if (sampleType === 'image') {
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
-        <defs>
-          <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
-            <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
-          </linearGradient>
-        </defs>
-        <rect width="800" height="500" rx="20" fill="#181a20" stroke="#333842" stroke-width="2"/>
-        <circle cx="400" cy="220" r="100" fill="url(#grad1)" opacity="0.8" />
-        <text x="400" y="235" font-family="system-ui, sans-serif" font-size="28" font-weight="700" fill="#ffffff" text-anchor="middle">Encrypted Image Share</text>
-        <text x="400" y="380" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af" text-anchor="middle">Zero-Knowledge AES-256 Verified</text>
-      </svg>`;
-      const blob = new Blob([svg], { type: 'image/svg+xml' });
-      const file = new File([blob], 'codeshare-architecture-diagram.svg', { type: 'image/svg+xml' });
-      validateAndSetFile(file);
-    } else {
-      // Small minimalist valid PDF
-      const pdfMinimalBase64 = 'JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoKPDwvTGVuZ3RoIDY4L0ZpbHRlci9GbGF0ZURlY29kZT4+c3RyZWFtCnicS0wuyczPU0jMS1Ew0DPQM9YzsFLIS8xNVQjISU3LzCvRy01VSM7P1y/JL0pVSM5Pzc3JTM4GAI7TD70KZW5kc3RyZWFtCmVuZG9iagoxIDAgb2JqCjw8L1R5cGUvUGFnZS9QYXJlbnQgMyAwIFIvTWVkaWFCb3hbMCAwIDU5NSA4NDJdL0NvbnRlbnRzIDIgMCBSPj4KZW5kb2JqCjMgMCBvYmoKPDwvVHlwZS9QYWdlcy9LaWRzWzEgMCBSXS9Db3VudCAxPj4KZW5kb2JqCjQgMCBvYmoKPDwvVHlwZS9DYXRhbG9nL1BhZ2VzIDMgMCBSPj4KZW5kb2JqCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDE2NSAwMDAwMCBuIAowMDAwMDAwMDE5IDAwMDAwIG4gCjAwMDAwMDAyNTMgMDAwMDAgbiAKMDAwMDAwMDI5NiAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNS9Sb290IDQgMCBSPj4Kc3RhcnR4cmVmCjM0NQolJUVPRg==';
-      const binary = window.atob(pdfMinimalBase64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      const file = new File([blob], 'encrypted-spec-document.pdf', { type: 'application/pdf' });
-      validateAndSetFile(file);
-    }
-  };
-
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-dialog" style={{ maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
@@ -211,29 +179,6 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
               </div>
             )}
           </div>
-
-          {/* Quick sample buttons */}
-          {!selectedFile && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              <span style={{ fontSize: '0.775rem', color: 'var(--text-dim)' }}>Quick samples:</span>
-              <button
-                className="btn btn-sm btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                onClick={(e) => { e.stopPropagation(); handleLoadSample('image'); }}
-              >
-                <Sparkles size={12} />
-                <span>Sample Image (SVG)</span>
-              </button>
-              <button
-                className="btn btn-sm btn-secondary"
-                style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                onClick={(e) => { e.stopPropagation(); handleLoadSample('pdf'); }}
-              >
-                <Sparkles size={12} />
-                <span>Sample PDF</span>
-              </button>
-            </div>
-          )}
 
           {/* Encryption Option */}
           <div className="switch-container">

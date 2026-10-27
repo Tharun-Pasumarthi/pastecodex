@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, ArrowRight, Sparkles } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { User } from '../types';
 
 interface LoginProps {
@@ -36,13 +36,6 @@ export const Login: React.FC<LoginProps> = ({
     if (password.length < 6) return 'Password must be at least 6 characters.';
     return null;
   })();
-
-  const handleQuickFill = () => {
-    setEmail('developer@example.com');
-    setPassword('secret123');
-    setTouched({ email: true, password: true });
-    setError(null);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +80,7 @@ export const Login: React.FC<LoginProps> = ({
         email: trimmedEmail,
         isAnonymous: false,
         isPro: true,
-        savedCodeshares: saveCodeshareId ? [saveCodeshareId] : ['my-first-share'],
+        savedCodeshares: saveCodeshareId ? [saveCodeshareId] : [],
       };
 
       // Persist user in localStorage so session never expires unexpectedly
@@ -193,18 +186,6 @@ export const Login: React.FC<LoginProps> = ({
             <ArrowRight size={16} />
           </button>
         </form>
-
-        <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-          <button
-            type="button"
-            className="btn btn-sm btn-secondary"
-            onClick={handleQuickFill}
-            style={{ fontSize: '0.775rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)' }}
-          >
-            <Sparkles size={13} color="#f59e0b" />
-            <span>Fill Demo Credentials</span>
-          </button>
-        </div>
 
         <div style={{ marginTop: '1.75rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
           <p style={{ marginBottom: '0.6rem' }}>

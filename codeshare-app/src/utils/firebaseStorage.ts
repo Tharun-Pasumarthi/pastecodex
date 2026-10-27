@@ -293,7 +293,8 @@ async function fallbackUpload(codeshareId: string, payload: EncryptedFirebasePay
 async function fallbackFetch(codeshareId: string): Promise<EncryptedFirebasePayload | null> {
   try {
     const res = await fetch(`/api/blobs/${codeshareId}`);
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       return await res.json();
     }
   } catch {
