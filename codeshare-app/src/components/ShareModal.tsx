@@ -24,7 +24,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   viewOnly,
   onToggleViewOnly,
   collaborators,
-  encryptionKey = 'sec_k' + Math.random().toString(36).substring(2, 10),
+  encryptionKey = '',
   attachedMedia,
   attachedMediaList = [],
   expiration,

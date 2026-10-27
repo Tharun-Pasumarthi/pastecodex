@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, ShieldCheck, MessageSquare, CheckCheck, User } from 'lucide-react';
 import type { ChatMessage } from '../utils/chatSync';
+import { formatTimeOnly } from '../utils/dateUtils';
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -47,8 +48,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   };
 
   const formatTime = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return formatTimeOnly(ts);
   };
 
   if (!isOpen) return null;

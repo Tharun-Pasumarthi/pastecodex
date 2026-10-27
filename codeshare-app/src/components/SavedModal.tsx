@@ -30,9 +30,9 @@ export const SavedModal: React.FC<SavedModalProps> = ({
   onRemoveSaved,
   onNewCodeshare,
 }) => {
-  if (!isOpen) return null;
-
   const savedIds = currentUser?.savedCodeshares || [];
+  const savedIdsKey = savedIds.join(',');
+
   const [items, setItems] = useState<SavedItemMeta[]>(() => {
     return savedIds.map((id) => {
       try {
@@ -88,7 +88,9 @@ export const SavedModal: React.FC<SavedModalProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [savedIds.join(',')]);
+  }, [savedIdsKey]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>

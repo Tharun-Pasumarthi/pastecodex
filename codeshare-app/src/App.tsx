@@ -38,6 +38,7 @@ import {
 } from './utils/chatSync';
 import { downloadAttachedMediaFile, downloadCodeText } from './utils/fileDownload';
 import { getCachedMediaForRoom } from './utils/indexedDbStorage';
+import { formatFriendlyTimestamp } from './utils/dateUtils';
 import { Check, Info } from 'lucide-react';
 
 export function App() {
@@ -50,7 +51,8 @@ export function App() {
   });
 
   // Unique tab identifier for peer message filtering
-  const tabIdRef = useRef<string>('tab_' + Math.random().toString(36).substr(2, 9));
+  const [tabId] = useState<string>(() => 'tab_' + Math.random().toString(36).substring(2, 11));
+  const tabIdRef = useRef<string>(tabId);
   const isApplyingRemoteUpdateRef = useRef<boolean>(false);
 
   // User State (persisted across reloads so session never expires unexpectedly)
@@ -62,7 +64,7 @@ export function App() {
       // ignore
     }
     return {
-      id: 'usr_' + Math.random().toString(36).substr(2, 9),
+      id: 'usr_' + Math.random().toString(36).substring(2, 11),
       name: '',
       email: '',
       isAnonymous: true,
@@ -73,7 +75,7 @@ export function App() {
 
   // Editor & Codeshare Session State
   const [codeshareId, setCodeshareId] = useState<string | null>(null);
-  const [docTitle, setDocTitle] = useState<string>('Oct 27 10:45 AM');
+  const [docTitle, setDocTitle] = useState<string>(() => formatFriendlyTimestamp());
   const [content, setContent] = useState<string>('');
   const [viewOnly, setViewOnly] = useState<boolean>(false);
   const [activePanel, setActivePanel] = useState<'settings' | 'about' | null>(null);
@@ -131,21 +133,24 @@ export function App() {
 
   // Keep fresh mutable references for subscription callbacks
   const codeshareIdRef = useRef(codeshareId);
-  codeshareIdRef.current = codeshareId;
   const contentRef = useRef(content);
-  contentRef.current = content;
   const docTitleRef = useRef(docTitle);
-  docTitleRef.current = docTitle;
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
   const expirationRef = useRef(expiration);
-  expirationRef.current = expiration;
   const encryptionKeyRef = useRef(encryptionKey);
-  encryptionKeyRef.current = encryptionKey;
   const attachedMediaRef = useRef(attachedMedia);
-  attachedMediaRef.current = attachedMedia;
   const attachedMediaListRef = useRef(attachedMediaList);
-  attachedMediaListRef.current = attachedMediaList;
+
+  useEffect(() => {
+    codeshareIdRef.current = codeshareId;
+    contentRef.current = content;
+    docTitleRef.current = docTitle;
+    settingsRef.current = settings;
+    expirationRef.current = expiration;
+    encryptionKeyRef.current = encryptionKey;
+    attachedMediaRef.current = attachedMedia;
+    attachedMediaListRef.current = attachedMediaList;
+  }, [codeshareId, content, docTitle, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Document loaded state to prevent initial empty state from overwriting saved documents
   const [isDocLoaded, setIsDocLoaded] = useState<boolean>(false);
@@ -257,13 +262,7 @@ export function App() {
   const handleCreateNewCodeshare = useCallback(() => {
     const newSlug = generateCodeshareId();
     const newKey = generateEncryptionKey();
-    const now = new Date();
-    const formatted = now.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
+    const formatted = formatFriendlyTimestamp();
 
     // Reset editor state
     setCodeshareId(newSlug);
@@ -360,14 +359,7 @@ export function App() {
             }
           } else {
             // First time opening this slug
-            const now = new Date();
-            const formatted = now.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-            });
-            setDocTitle(formatted);
+            setDocTitle(formatFriendlyTimestamp());
           }
 
           // Mark document as safely loaded so auto-save can engage
@@ -911,7 +903,7 @@ export function App() {
             onClose={() => setIsChatOpen(false)}
             messages={chatMessages}
             onSendMessage={handleSendChatMessage}
-            mySenderId={tabIdRef.current}
+            mySenderId={tabId}
             mySenderName={currentUser?.name || 'You'}
           />
 
