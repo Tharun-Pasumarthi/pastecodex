@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Download, Plus, Info, X, Check, Paperclip, FileText, Image as ImageIcon, Flame } from 'lucide-react';
+import { Settings, Download, Plus, Info, X, Check, Paperclip, FileText, Image as ImageIcon } from 'lucide-react';
 import type { EditorSettings, SyntaxMode, EditorTheme, KeymapMode, AttachedMedia } from '../types';
 import { SYNTAX_OPTIONS } from '../utils/languages';
 
@@ -15,7 +15,6 @@ interface SidebarProps {
   onClosePanel: () => void;
   attachedMedia?: AttachedMedia | null;
   onOpenFileUpload?: () => void;
-  onOpenFirebaseConfig?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -30,7 +29,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClosePanel,
   attachedMedia,
   onOpenFileUpload,
-  onOpenFirebaseConfig,
 }) => {
   return (
     <aside className={`cs-sidebar ${activePanel ? 'is-open' : ''}`}>
@@ -237,17 +235,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Plus size={20} />
             </button>
           </li>
-          {onOpenFirebaseConfig && (
-            <li>
-              <button
-                className="btn-icon"
-                onClick={onOpenFirebaseConfig}
-                title="Firebase Cloud Settings"
-              >
-                <Flame size={20} color="#f59e0b" />
-              </button>
-            </li>
-          )}
           <li>
             <button
               className={`btn-icon ${activePanel === 'about' ? 'is-active' : ''}`}

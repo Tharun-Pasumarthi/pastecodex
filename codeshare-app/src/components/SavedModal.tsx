@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Bookmark, Code2, Trash2, ExternalLink, Plus, Clock } from 'lucide-react';
 import type { User } from '../types';
+import { fetchDocument } from '../utils/documentSync';
 
 export interface SavedItemMeta {
   id: string;
@@ -9,6 +10,7 @@ export interface SavedItemMeta {
   language: string;
   savedAt: string;
   encryptionKey?: string;
+  isLoading?: boolean;
 }
 
 interface SavedModalProps {
@@ -30,33 +32,63 @@ export const SavedModal: React.FC<SavedModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  // Retrieve saved items metadata from localStorage
   const savedIds = currentUser?.savedCodeshares || [];
-  const items: SavedItemMeta[] = savedIds.map((id) => {
-    try {
-      const cachedDoc = localStorage.getItem(`codeshare_doc_${id}`);
-      if (cachedDoc) {
-        const doc = JSON.parse(cachedDoc);
-        return {
-          id,
-          title: doc.title || `Codeshare ${id}`,
-          preview: (doc.content || '').slice(0, 120) || '// Empty code snippet',
-          language: doc.settings?.modeName || 'javascript',
-          savedAt: doc.createdAt || 'Saved recently',
-          encryptionKey: doc.encryptionKey,
-        };
+  const [items, setItems] = useState<SavedItemMeta[]>(() => {
+    return savedIds.map((id) => {
+      try {
+        const cachedDoc = localStorage.getItem(`codeshare_doc_${id}`);
+        if (cachedDoc) {
+          const doc = JSON.parse(cachedDoc);
+          return {
+            id,
+            title: doc.title || `Codeshare ${id}`,
+            preview: (doc.content || '').slice(0, 120) || '// Empty code snippet',
+            language: doc.settings?.modeName || 'javascript',
+            savedAt: 'Saved in library',
+            encryptionKey: doc.encryptionKey,
+          };
+        }
+      } catch {
+        // fallback
       }
-    } catch {
-      // fallback
-    }
-    return {
-      id,
-      title: `Codeshare ${id}`,
-      preview: '// No preview available',
-      language: 'code',
-      savedAt: 'Saved',
-    };
+      return {
+        id,
+        title: `Codeshare ${id}`,
+        preview: 'Loading snippet...',
+        language: 'code',
+        savedAt: 'Saved',
+        isLoading: true,
+      };
+    });
   });
+
+  useEffect(() => {
+    let isCancelled = false;
+    savedIds.forEach((id) => {
+      fetchDocument(id).then((docData) => {
+        if (isCancelled || !docData) return;
+        setItems((prev) =>
+          prev.map((item) => {
+            if (item.id === id) {
+              return {
+                ...item,
+                title: docData.title || item.title,
+                preview: (docData.content || '').slice(0, 120) || '// Empty code snippet',
+                language: docData.settings?.modeName || item.language,
+                encryptionKey: docData.encryptionKey || item.encryptionKey,
+                isLoading: false,
+              };
+            }
+            return item;
+          })
+        );
+      });
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [savedIds.join(',')]);
 
   return (
     <div className="modal-overlay" onClick={onClose}>

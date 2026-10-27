@@ -5,7 +5,6 @@ import { Sidebar } from './components/Sidebar';
 import { ShareModal } from './components/ShareModal';
 import { FileUploadModal } from './components/FileUploadModal';
 import { MediaViewer } from './components/MediaViewer';
-import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 import { SavedModal } from './components/SavedModal';
 import { Home } from './components/Home';
 import { Login } from './components/Login';
@@ -61,7 +60,6 @@ export function App() {
   const [activePanel, setActivePanel] = useState<'settings' | 'about' | null>(null);
   const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
   const [isFileUploadOpen, setIsFileUploadOpen] = useState<boolean>(false);
-  const [isFirebaseConfigOpen, setIsFirebaseConfigOpen] = useState<boolean>(false);
   const [isSavedModalOpen, setIsSavedModalOpen] = useState<boolean>(false);
 
   // In-app Toast feedback
@@ -98,6 +96,8 @@ export function App() {
   ]);
 
   // Keep fresh mutable references for subscription callbacks
+  const codeshareIdRef = useRef(codeshareId);
+  codeshareIdRef.current = codeshareId;
   const contentRef = useRef(content);
   contentRef.current = content;
   const docTitleRef = useRef(docTitle);
@@ -110,6 +110,37 @@ export function App() {
   encryptionKeyRef.current = encryptionKey;
   const attachedMediaRef = useRef(attachedMedia);
   attachedMediaRef.current = attachedMedia;
+
+  // Ensure documents are synchronously persisted even when the user closes the browser/tab
+  useEffect(() => {
+    const handleImmediateFlush = () => {
+      if (!codeshareIdRef.current) return;
+      saveDocument({
+        id: codeshareIdRef.current,
+        title: docTitleRef.current,
+        content: contentRef.current,
+        settings: settingsRef.current,
+        expiration: expirationRef.current,
+        encryptionKey: encryptionKeyRef.current,
+        attachedMedia: attachedMediaRef.current,
+        timestamp: Date.now(),
+        senderId: tabIdRef.current,
+      });
+    };
+
+    window.addEventListener('beforeunload', handleImmediateFlush);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        handleImmediateFlush();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleImmediateFlush);
+      document.removeEventListener('visibilitychange', handleImmediateFlush);
+    };
+  }, []);
 
   // Process and unpack zero-knowledge URL hash fragments (#key=...&d=...)
   const processUrlHash = useCallback(async (hashStr: string) => {
@@ -511,6 +542,23 @@ export function App() {
 
   // Open a saved codeshare
   const handleOpenSavedCodeshare = (id: string, key?: string) => {
+    setIsSavedModalOpen(false);
+    if (key) {
+      setEncryptionKey(key);
+    }
+    // Pre-populate state immediately so that user sees content immediately
+    fetchDocument(id).then((docData) => {
+      if (docData) {
+        if (docData.title) setDocTitle(docData.title);
+        if (typeof docData.content === 'string') setContent(docData.content);
+        if (docData.settings) setSettings(docData.settings);
+        if (docData.expiration) setExpiration(docData.expiration);
+        if (docData.attachedMedia) setAttachedMedia(docData.attachedMedia);
+        if (docData.encryptionKey && !key) {
+          setEncryptionKey(docData.encryptionKey);
+        }
+      }
+    });
     navigate(`/${id}${key ? `#key=${key}` : ''}`);
   };
 
@@ -653,7 +701,6 @@ export function App() {
             onClosePanel={() => setActivePanel(null)}
             attachedMedia={attachedMedia}
             onOpenFileUpload={() => setIsFileUploadOpen(true)}
-            onOpenFirebaseConfig={() => setIsFirebaseConfigOpen(true)}
           />
 
           <ShareModal
@@ -675,11 +722,6 @@ export function App() {
             onClose={() => setIsFileUploadOpen(false)}
             onAttachMedia={handleAttachMedia}
             encryptionKey={encryptionKey}
-          />
-
-          <FirebaseConfigModal
-            isOpen={isFirebaseConfigOpen}
-            onClose={() => setIsFirebaseConfigOpen(false)}
           />
 
           <SavedModal

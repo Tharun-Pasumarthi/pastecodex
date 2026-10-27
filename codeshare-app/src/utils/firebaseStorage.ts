@@ -9,7 +9,7 @@
 
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, type Firestore } from 'firebase/firestore';
-import { getStorage, ref, uploadString, getDownloadURL, deleteObject, type FirebaseStorage } from 'firebase/storage';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import type { AttachedMedia } from '../types';
 import { encryptPayload, decryptPayload } from './crypto';
 
@@ -22,31 +22,26 @@ export interface FirebaseConfig {
   appId: string;
 }
 
-const STORAGE_KEY = 'codeshare_firebase_config';
-
 const DEFAULT_FIREBASE_CONFIG: FirebaseConfig = {
-  apiKey: "AIzaSyDVTzz1p2puuK4Xiayh1U4uAgdxp9164H0",
-  authDomain: "codeshare-7aca3.firebaseapp.com",
-  projectId: "codeshare-7aca3",
-  storageBucket: "codeshare-7aca3.firebasestorage.app",
-  messagingSenderId: "547250006609",
-  appId: "1:547250006609:web:0362d1bc0778d30df16670",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDVTzz1p2puuK4Xiayh1U4uAgdxp9164H0",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "codeshare-7aca3.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "codeshare-7aca3",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "codeshare-7aca3.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "547250006609",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:547250006609:web:0362d1bc0778d30df16670",
 };
 
 /**
- * Load saved Firebase config from localStorage or Vite env, with built-in default
+ * Load Firebase config securely from Vite environment variables with fallback
  */
 export function getFirebaseConfig(): FirebaseConfig | null {
+  // Clear any legacy custom config from localStorage to ensure clean credentials
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
+    localStorage.removeItem('codeshare_firebase_config');
   } catch {
     // ignore
   }
 
-  // Check Vite environment variables
   if (import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_PROJECT_ID) {
     return {
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -59,28 +54,6 @@ export function getFirebaseConfig(): FirebaseConfig | null {
   }
 
   return DEFAULT_FIREBASE_CONFIG;
-}
-
-/**
- * Save user-provided Firebase configuration
- */
-export function saveFirebaseConfig(config: FirebaseConfig) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * Clear custom Firebase configuration
- */
-export function clearFirebaseConfig() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 let firebaseAppInstance: FirebaseApp | null = null;
@@ -121,10 +94,11 @@ export interface EncryptedFirebasePayload {
   iv: string;
   uploadedAt: string;
   isEncrypted: boolean;
+  chunkCount?: number;
 }
 
 /**
- * Upload an encrypted PDF or Image to Firebase (or fallback to local dev relay)
+ * Upload an encrypted PDF or Image to Firebase (with chunking for large files)
  */
 export async function uploadEncryptedMediaToFirebase(
   codeshareId: string,
@@ -159,24 +133,35 @@ export async function uploadEncryptedMediaToFirebase(
   const services = getFirebaseServices();
 
   if (services) {
-    // Upload ciphertext directly to Firestore / Firebase Storage
     try {
-      if (file.size < 900 * 1024) {
-        // Files under 900KB fit nicely in Firestore document directly
+      const CHUNK_SIZE = 450000; // ~450KB chunks to safely respect Firestore 1MB limits
+      if (ciphertext.length <= CHUNK_SIZE) {
         await setDoc(doc(services.db, 'encrypted_blobs', codeshareId), payload);
       } else {
-        // Larger files upload to Firebase Storage
-        const storageRef = ref(services.storage, `encrypted_blobs/${codeshareId}.json`);
-        await uploadString(storageRef, JSON.stringify(payload), 'raw', {
-          contentType: 'application/json',
-        });
+        const chunks: string[] = [];
+        for (let i = 0; i < ciphertext.length; i += CHUNK_SIZE) {
+          chunks.push(ciphertext.slice(i, i + CHUNK_SIZE));
+        }
+        const metaPayload: EncryptedFirebasePayload = {
+          ...payload,
+          ciphertext: '',
+          chunkCount: chunks.length,
+        };
+        await setDoc(doc(services.db, 'encrypted_blobs', codeshareId), metaPayload);
+        await Promise.all(
+          chunks.map((chunk, idx) =>
+            setDoc(doc(services.db, 'encrypted_blobs', `${codeshareId}_chk_${idx}`), {
+              chunk,
+              idx,
+            })
+          )
+        );
       }
     } catch (err) {
       console.warn('[Firebase] Upload failed, falling back to local relay:', err);
       await fallbackUpload(codeshareId, payload);
     }
   } else {
-    // If Firebase keys aren't set yet, use our built-in local relay
     await fallbackUpload(codeshareId, payload);
   }
 
@@ -194,7 +179,7 @@ export async function uploadEncryptedMediaToFirebase(
 }
 
 /**
- * Fetch encrypted blob from Firebase and decrypt locally in browser
+ * Fetch encrypted blob from Firebase (with reassembly) and decrypt locally in browser
  */
 export async function fetchAndDecryptMediaFromFirebase(
   codeshareId: string,
@@ -209,13 +194,16 @@ export async function fetchAndDecryptMediaFromFirebase(
         const docSnap = await getDoc(doc(services.db, 'encrypted_blobs', codeshareId));
         if (docSnap.exists()) {
           payload = docSnap.data() as EncryptedFirebasePayload;
-        } else {
-          // Check Firebase Storage
-          const storageRef = ref(services.storage, `encrypted_blobs/${codeshareId}.json`);
-          const downloadUrl = await getDownloadURL(storageRef);
-          const res = await fetch(downloadUrl);
-          if (res.ok) {
-            payload = await res.json();
+          if (payload.chunkCount && payload.chunkCount > 0) {
+            const chunkDocs = await Promise.all(
+              Array.from({ length: payload.chunkCount }, (_, idx) =>
+                getDoc(doc(services.db, 'encrypted_blobs', `${codeshareId}_chk_${idx}`))
+              )
+            );
+            const fullCiphertext = chunkDocs
+              .map((snap) => (snap.exists() ? ((snap.data()?.chunk as string) || '') : ''))
+              .join('');
+            payload.ciphertext = fullCiphertext;
           }
         }
       } catch (err) {
@@ -263,9 +251,18 @@ export async function deleteMediaFromFirebase(codeshareId: string): Promise<bool
   const services = getFirebaseServices();
   if (services) {
     try {
+      const docSnap = await getDoc(doc(services.db, 'encrypted_blobs', codeshareId));
+      if (docSnap.exists()) {
+        const data = docSnap.data() as EncryptedFirebasePayload;
+        if (data.chunkCount && data.chunkCount > 0) {
+          await Promise.all(
+            Array.from({ length: data.chunkCount }, (_, idx) =>
+              deleteDoc(doc(services.db, 'encrypted_blobs', `${codeshareId}_chk_${idx}`))
+            )
+          );
+        }
+      }
       await deleteDoc(doc(services.db, 'encrypted_blobs', codeshareId));
-      const storageRef = ref(services.storage, `encrypted_blobs/${codeshareId}.json`);
-      await deleteObject(storageRef).catch(() => {});
     } catch {
       // ignore
     }

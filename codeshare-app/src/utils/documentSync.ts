@@ -27,6 +27,21 @@ export interface DocumentSyncData {
 
 const LOCAL_STORAGE_PREFIX = 'codeshare_doc_';
 
+export function sanitizeForFirestore(val: any): any {
+  if (val === undefined) return null;
+  if (val === null || typeof val !== 'object') return val;
+  if (Array.isArray(val)) {
+    return val.map(sanitizeForFirestore).filter((v) => v !== undefined);
+  }
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(val)) {
+    if (v !== undefined) {
+      clean[k] = sanitizeForFirestore(v);
+    }
+  }
+  return clean;
+}
+
 /**
  * Save document state locally, to Firestore Cloud, and to the server relay, and broadcast to other tabs
  */
@@ -69,10 +84,11 @@ export async function saveDocument(docData: DocumentSyncData): Promise<void> {
           dataUrl: '',
         };
       }
-      setDoc(doc(services.db, 'codeshare_documents', docData.id), cleanDoc).catch(() => {});
+      const sanitized = sanitizeForFirestore(cleanDoc);
+      await setDoc(doc(services.db, 'codeshare_documents', docData.id), sanitized);
     }
-  } catch {
-    // Firestore error
+  } catch (err) {
+    console.warn('[Firestore] saveDocument error:', err);
   }
 
   // 4. Persist to server relay for other browsers / incognito windows

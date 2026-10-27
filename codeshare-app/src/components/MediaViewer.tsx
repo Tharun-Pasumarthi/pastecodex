@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { AttachedMedia } from '../types';
 import {
   FileText,
@@ -18,12 +18,40 @@ interface MediaViewerProps {
   onDownload: () => void;
 }
 
+function dataUrlToBlob(dataUrl: string): Blob {
+  const parts = dataUrl.split(',');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const bstr = atob(parts[1] || '');
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+}
+
 export const MediaViewer: React.FC<MediaViewerProps> = ({
   media,
   onRemove,
   onDownload,
 }) => {
   const [zoom, setZoom] = useState(1);
+  const [blobUrl, setBlobUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!media.dataUrl) return;
+    try {
+      const blob = dataUrlToBlob(media.dataUrl);
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } catch {
+      setBlobUrl(media.dataUrl);
+    }
+  }, [media.dataUrl]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
@@ -32,18 +60,15 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   };
 
   const handleOpenExternal = () => {
-    const win = window.open();
-    if (win) {
-      win.document.write(
-        `<iframe src="${media.dataUrl}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" allowfullscreen></iframe>`
-      );
-    }
+    const targetUrl = blobUrl || media.dataUrl;
+    window.open(targetUrl, '_blank');
   };
 
   return (
-    <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: '#121418', overflow: 'hidden' }}>
+    <div className="media-viewer-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: '#121418', overflow: 'hidden' }}>
       {/* Media Top Toolbar */}
       <div
+        className="media-top-toolbar"
         style={{
           height: '46px',
           background: 'var(--bg-secondary)',
@@ -196,7 +221,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       >
         {media.type === 'pdf' ? (
           <iframe
-            src={media.dataUrl}
+            src={blobUrl || media.dataUrl}
             title={media.name}
             style={{
               width: '100%',
