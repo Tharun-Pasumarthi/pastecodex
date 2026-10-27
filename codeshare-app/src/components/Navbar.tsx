@@ -49,6 +49,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleQuickCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (onSaveCodeshare) onSaveCodeshare();
     if (!shareUrl) {
       if (onOpenShare) onOpenShare();
       return;

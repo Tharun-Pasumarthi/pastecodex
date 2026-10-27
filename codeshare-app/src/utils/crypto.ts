@@ -158,42 +158,15 @@ export function parseHashParams(hashStr: string): { key?: string; docToken?: str
 }
 
 /**
- * Builds a zero-knowledge self-contained share URL that delivers code and media reliably
+ * Builds a clean, short zero-knowledge share URL (~75 characters)
+ * The secret key stays strictly in the #key=... URL fragment and is never sent to servers
  */
-export async function generateShareableUrl(
+export function generateShareableUrl(
   codeshareId: string,
-  key: string,
-  content: string,
-  docTitle: string,
-  modeName: string,
-  attachedMedia?: { name: string; type: 'pdf' | 'image'; mimeType: string; size: number; dataUrl: string } | null
-): Promise<string> {
+  key?: string
+): string {
   const origin = window.location.origin;
   const baseUrl = `${origin}/${codeshareId}`;
-
-  const payload: Record<string, unknown> = {
-    c: content,
-    t: docTitle,
-    m: modeName,
-    ts: Date.now(),
-  };
-
-  // If attached media fits in URL (under 750KB), embed it directly
-  if (attachedMedia && attachedMedia.dataUrl && attachedMedia.dataUrl.length < 800000) {
-    payload.med = {
-      name: attachedMedia.name,
-      type: attachedMedia.type,
-      mimeType: attachedMedia.mimeType,
-      size: attachedMedia.size,
-      dataUrl: attachedMedia.dataUrl,
-    };
-  }
-
-  try {
-    const token = await packDocumentToHashToken(payload, key);
-    return `${baseUrl}#key=${key}&d=${token}`;
-  } catch {
-    return `${baseUrl}#key=${key}`;
-  }
+  return key ? `${baseUrl}#key=${key}` : baseUrl;
 }
 

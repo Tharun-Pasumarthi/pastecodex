@@ -526,31 +526,10 @@ export function App() {
   const queryParams = new URLSearchParams(currentQuery);
   const saveCodeshareId = queryParams.get('saveCodeshare') || undefined;
 
-  // Active full share URL with zero-knowledge encrypted snapshot token
-  const [shareUrl, setShareUrl] = useState<string>('');
-
-  useEffect(() => {
-    if (!codeshareId || !encryptionKey) {
-      setShareUrl('');
-      return;
-    }
-    let isCancelled = false;
-    generateShareableUrl(
-      codeshareId,
-      encryptionKey,
-      content,
-      docTitle,
-      settings.modeName,
-      attachedMedia
-    ).then((url) => {
-      if (!isCancelled) {
-        setShareUrl(url);
-      }
-    });
-    return () => {
-      isCancelled = true;
-    };
-  }, [codeshareId, encryptionKey, content, docTitle, settings.modeName, attachedMedia]);
+  // Active clean share URL with zero-knowledge encryption key in URL fragment (~75 chars)
+  const shareUrl = codeshareId
+    ? generateShareableUrl(codeshareId, encryptionKey)
+    : '';
 
   return (
     <div className="app-container">
@@ -688,7 +667,6 @@ export function App() {
             attachedMedia={attachedMedia}
             expiration={expiration}
             onUpdateExpiration={handleUpdateExpiration}
-            shareUrl={shareUrl}
           />
 
           <FileUploadModal
