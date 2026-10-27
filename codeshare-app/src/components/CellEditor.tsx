@@ -99,62 +99,80 @@ export const CellEditor: React.FC<CellEditorProps> = ({
       }}
     >
       {/* Cell Header Toolbar */}
-      <div
-        className="cell-header"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0.45rem 0.85rem',
-          backgroundColor: 'var(--bg-tertiary)',
-          borderBottom: isCollapsed ? 'none' : '1px solid var(--border-light)',
-          fontSize: '0.8rem',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1 }}>
-          <span
-            style={{
-              fontWeight: 700,
-              color: 'var(--text-dim)',
-              fontSize: '0.75rem',
-              letterSpacing: '0.5px',
-            }}
-          >
-            #{index + 1}
-          </span>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            {getCellIcon(cell.type)}
-            <input
-              type="text"
-              value={cell.title || ''}
-              onChange={(e) => onUpdateTitle(cell.id, e.target.value)}
-              placeholder="Cell Label"
-              disabled={viewOnly}
+      <div className={`cell-header ${isCollapsed ? 'is-collapsed' : ''}`}>
+        <div className="cell-header-left">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0 }}>
+            <span
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-primary)',
-                fontWeight: 600,
-                fontSize: '0.8rem',
-                outline: 'none',
-                maxWidth: '180px',
+                fontWeight: 700,
+                color: 'var(--text-dim)',
+                fontSize: '0.75rem',
+                letterSpacing: '0.5px',
+                flexShrink: 0,
               }}
-            />
+            >
+              #{index + 1}
+            </span>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0 }}>
+              {getCellIcon(cell.type)}
+              <input
+                type="text"
+                value={cell.title || ''}
+                onChange={(e) => onUpdateTitle(cell.id, e.target.value)}
+                placeholder="Cell Label"
+                disabled={viewOnly}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                  width: '100%',
+                  maxWidth: '160px',
+                }}
+              />
+            </div>
           </div>
 
+          {cell.type === 'markdown' && (
+            <button
+              className="btn-icon"
+              onClick={() => setIsPreview(!isPreview)}
+              title={isPreview ? 'Switch to Markdown Edit Mode' : 'Preview Rendered Markdown'}
+              style={{
+                color: isPreview ? '#10b981' : 'var(--text-muted)',
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                border: '1px solid var(--border-light)',
+                borderRadius: '4px',
+              }}
+            >
+              {isPreview ? <Edit3 size={13} /> : <Eye size={13} />}
+              <span>{isPreview ? 'Edit' : 'Preview'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Controls: Selectors & Actions */}
+        <div className="cell-header-controls">
           {/* Cell Type & Language Selectors */}
-          {!viewOnly && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginLeft: '0.5rem' }}>
+          {!viewOnly ? (
+            <div className="cell-header-selectors">
               <select
                 value={cell.type}
                 onChange={handleTypeChange}
+                aria-label="Cell Format"
                 style={{
                   background: 'var(--bg-primary)',
                   color: 'var(--text-secondary)',
                   border: '1px solid var(--border-light)',
                   borderRadius: '4px',
-                  padding: '0.2rem 0.45rem',
+                  padding: '0.25rem 0.45rem',
                   fontSize: '0.75rem',
                   cursor: 'pointer',
                 }}
@@ -169,12 +187,13 @@ export const CellEditor: React.FC<CellEditorProps> = ({
                 <select
                   value={cell.language}
                   onChange={handleLanguageChange}
+                  aria-label="Code Syntax"
                   style={{
                     background: 'var(--bg-primary)',
                     color: 'var(--text-secondary)',
                     border: '1px solid var(--border-light)',
                     borderRadius: '4px',
-                    padding: '0.2rem 0.45rem',
+                    padding: '0.25rem 0.45rem',
                     fontSize: '0.75rem',
                     cursor: 'pointer',
                   }}
@@ -187,9 +206,7 @@ export const CellEditor: React.FC<CellEditorProps> = ({
                 </select>
               )}
             </div>
-          )}
-
-          {viewOnly && (
+          ) : (
             <span
               style={{
                 fontSize: '0.75rem',
@@ -202,89 +219,75 @@ export const CellEditor: React.FC<CellEditorProps> = ({
               {cell.type.toUpperCase()}{cell.type === 'code' ? ` (${cell.language})` : ''}
             </span>
           )}
-        </div>
 
-        {/* Cell Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          {cell.type === 'markdown' && (
+          {/* Cell Actions */}
+          <div className="cell-header-actions">
             <button
               className="btn-icon"
-              onClick={() => setIsPreview(!isPreview)}
-              title={isPreview ? 'Switch to Markdown Edit Mode' : 'Preview Rendered Markdown'}
-              style={{
-                color: isPreview ? '#10b981' : 'var(--text-muted)',
-                padding: '0.3rem',
-                fontSize: '0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              title={isCollapsed ? 'Expand Cell' : 'Collapse Cell'}
+              style={{ color: 'var(--text-muted)', padding: '0.35rem' }}
+              aria-label={isCollapsed ? 'Expand Cell' : 'Collapse Cell'}
             >
-              {isPreview ? <Edit3 size={13} /> : <Eye size={13} />}
-              <span>{isPreview ? 'Edit' : 'Preview'}</span>
+              {isCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
             </button>
-          )}
 
-          <button
-            className="btn-icon"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            title={isCollapsed ? 'Expand Cell' : 'Collapse Cell'}
-            style={{ color: 'var(--text-muted)', padding: '0.3rem' }}
-          >
-            {isCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
-          </button>
-
-          {!viewOnly && (
-            <>
-              <button
-                className="btn-icon"
-                onClick={() => onMoveUp(index)}
-                disabled={index === 0}
-                title="Move Cell Up"
-                style={{
-                  color: index === 0 ? 'var(--text-dim)' : 'var(--text-muted)',
-                  cursor: index === 0 ? 'not-allowed' : 'pointer',
-                  padding: '0.3rem',
-                }}
-              >
-                <ChevronUp size={14} />
-              </button>
-
-              <button
-                className="btn-icon"
-                onClick={() => onMoveDown(index)}
-                disabled={index === totalCells - 1}
-                title="Move Cell Down"
-                style={{
-                  color: index === totalCells - 1 ? 'var(--text-dim)' : 'var(--text-muted)',
-                  cursor: index === totalCells - 1 ? 'not-allowed' : 'pointer',
-                  padding: '0.3rem',
-                }}
-              >
-                <ChevronDown size={14} />
-              </button>
-
-              <button
-                className="btn-icon"
-                onClick={() => onDuplicate(index)}
-                title="Duplicate Cell"
-                style={{ color: 'var(--text-muted)', padding: '0.3rem' }}
-              >
-                <Copy size={13} />
-              </button>
-
-              {totalCells > 1 && (
+            {!viewOnly && (
+              <>
                 <button
                   className="btn-icon"
-                  onClick={() => onDelete(cell.id)}
-                  title="Delete Cell"
-                  style={{ color: '#ef4444', padding: '0.3rem' }}
+                  onClick={() => onMoveUp(index)}
+                  disabled={index === 0}
+                  title="Move Cell Up"
+                  style={{
+                    color: index === 0 ? 'var(--text-dim)' : 'var(--text-muted)',
+                    cursor: index === 0 ? 'not-allowed' : 'pointer',
+                    padding: '0.35rem',
+                  }}
+                  aria-label="Move cell up"
                 >
-                  <Trash2 size={13} />
+                  <ChevronUp size={14} />
                 </button>
-              )}
-            </>
-          )}
+
+                <button
+                  className="btn-icon"
+                  onClick={() => onMoveDown(index)}
+                  disabled={index === totalCells - 1}
+                  title="Move Cell Down"
+                  style={{
+                    color: index === totalCells - 1 ? 'var(--text-dim)' : 'var(--text-muted)',
+                    cursor: index === totalCells - 1 ? 'not-allowed' : 'pointer',
+                    padding: '0.35rem',
+                  }}
+                  aria-label="Move cell down"
+                >
+                  <ChevronDown size={14} />
+                </button>
+
+                <button
+                  className="btn-icon"
+                  onClick={() => onDuplicate(index)}
+                  title="Duplicate Cell"
+                  style={{ color: 'var(--text-muted)', padding: '0.35rem' }}
+                  aria-label="Duplicate cell"
+                >
+                  <Copy size={13} />
+                </button>
+
+                {totalCells > 1 && (
+                  <button
+                    className="btn-icon"
+                    onClick={() => onDelete(cell.id)}
+                    title="Delete Cell"
+                    style={{ color: '#ef4444', padding: '0.35rem' }}
+                    aria-label="Delete cell"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 

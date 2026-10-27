@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Code2, Clock, Users, Bookmark, BookmarkCheck, LogIn, UserCheck, Paperclip, FileText, Image as ImageIcon, ShieldCheck, LogOut, Check, Copy, Plus, Library, MessageSquare, Lock } from 'lucide-react';
+import { Code2, Clock, Users, Bookmark, BookmarkCheck, LogIn, UserCheck, Paperclip, FileText, Image as ImageIcon, ShieldCheck, LogOut, Check, Copy, Plus, Library, MessageSquare, Lock, MoreHorizontal } from 'lucide-react';
 import type { User, Collaborator, AttachedMedia, ActiveTab, ExpirationOption } from '../types';
 
 interface NavbarProps {
@@ -27,6 +27,7 @@ interface NavbarProps {
   onToggleChat?: () => void;
   isChatOpen?: boolean;
   unreadChatCount?: number;
+  onOpenMobileDrawer?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -54,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleChat,
   isChatOpen = false,
   unreadChatCount = 0,
+  onOpenMobileDrawer,
 }) => {
   const isEditor = Boolean(codeshareId && currentPath.startsWith('/'));
   const [quickCopied, setQuickCopied] = useState(false);
@@ -263,95 +265,98 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="nav-btn-text">{isSyncing ? 'Saving...' : 'Saved'}</span>
             </div>
 
-            {/* Dynamic Expiration Badge (Optional Expiration) */}
-            {expiration === 'never' ? (
-              <div
-                className="badge-expire"
-                onClick={onOpenShare}
-                style={{
-                  background: 'rgba(16, 185, 129, 0.12)',
-                  borderColor: 'rgba(16, 185, 129, 0.35)',
-                  color: '#34d399',
-                  cursor: 'pointer',
-                }}
-                title="Expiration is optional. Currently set to Never expire. Click to configure."
-              >
-                <ShieldCheck size={13} color="#10b981" />
-                <span className="badge-expire-text">Permanent</span>
-              </div>
-            ) : (
-              <div
-                className="badge-expire pulse"
-                onClick={onOpenShare}
-                style={{ cursor: 'pointer' }}
-                title={`This link auto-expires in ${expiration}. Click to change or make permanent.`}
-              >
-                <Clock size={13} color="#f59e0b" />
-                <span className="badge-expire-text">{expiration}</span>
-              </div>
-            )}
+            {/* Desktop Actions Group: Hidden on mobile since handled by bottom nav & drawer */}
+            <div className="desktop-nav-group" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              {/* Dynamic Expiration Badge (Optional Expiration) */}
+              {expiration === 'never' ? (
+                <div
+                  className="badge-expire"
+                  onClick={onOpenShare}
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    borderColor: 'rgba(16, 185, 129, 0.35)',
+                    color: '#34d399',
+                    cursor: 'pointer',
+                  }}
+                  title="Expiration is optional. Currently set to Never expire. Click to configure."
+                >
+                  <ShieldCheck size={13} color="#10b981" />
+                  <span className="badge-expire-text">Permanent</span>
+                </div>
+              ) : (
+                <div
+                  className="badge-expire pulse"
+                  onClick={onOpenShare}
+                  style={{ cursor: 'pointer' }}
+                  title={`This link auto-expires in ${expiration}. Click to change or make permanent.`}
+                >
+                  <Clock size={13} color="#f59e0b" />
+                  <span className="badge-expire-text">{expiration}</span>
+                </div>
+              )}
 
-            {/* Attach File Button */}
-            <button
-              className="btn btn-sm btn-secondary nav-action-btn"
-              onClick={onOpenFileUpload}
-              title="Attach PDF or Images to this encrypted Codeshare"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-            >
-              <Paperclip size={14} color="#3b82f6" />
-              <span className="nav-btn-text">
-                {(attachedMediaList.length > 0 ? attachedMediaList.length : (attachedMedia ? 1 : 0)) > 0
-                  ? `Files (${attachedMediaList.length > 0 ? attachedMediaList.length : 1})`
-                  : 'Attach'}
-              </span>
-            </button>
-
-            {/* Collaborator Chat Drawer Button */}
-            {onToggleChat && (
+              {/* Attach File Button */}
               <button
-                className={`btn btn-sm nav-action-btn ${isChatOpen ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={onToggleChat}
-                title="Collaborator Real-time Chat (End-to-End Encrypted)"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', position: 'relative' }}
+                className="btn btn-sm btn-secondary nav-action-btn"
+                onClick={onOpenFileUpload}
+                title="Attach PDF or Images to this encrypted Codeshare"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                <MessageSquare size={14} />
-                <span className="nav-btn-text">Chat</span>
-                {unreadChatCount > 0 && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: '-4px',
-                      right: '-4px',
-                      backgroundColor: '#ef4444',
-                      color: '#fff',
-                      fontSize: '0.65rem',
-                      fontWeight: 700,
-                      borderRadius: '10px',
-                      minWidth: '16px',
-                      height: '16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '0 4px',
-                      boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
-                    }}
-                  >
-                    {unreadChatCount}
-                  </span>
-                )}
+                <Paperclip size={14} color="#3b82f6" />
+                <span className="nav-btn-text">
+                  {(attachedMediaList.length > 0 ? attachedMediaList.length : (attachedMedia ? 1 : 0)) > 0
+                    ? `Files (${attachedMediaList.length > 0 ? attachedMediaList.length : 1})`
+                    : 'Attach'}
+                </span>
               </button>
-            )}
 
-            {/* Save Button with Visual Feedback */}
-            <button
-              className={`btn btn-sm nav-action-btn ${isSaved ? 'btn-secondary' : 'btn-primary'}`}
-              onClick={onSaveCodeshare}
-              title={isSaved ? "Saved in your library (click to re-sync)" : "Save to your PasteCodex library"}
-              style={isSaved ? { borderColor: '#10b981', color: '#34d399' } : undefined}
-            >
-              {isSaved ? <BookmarkCheck size={14} color="#10b981" /> : <Bookmark size={14} />}
-              <span className="nav-btn-text">{isSaved ? 'Saved' : 'Save'}</span>
-            </button>
+              {/* Collaborator Chat Drawer Button */}
+              {onToggleChat && (
+                <button
+                  className={`btn btn-sm nav-action-btn ${isChatOpen ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={onToggleChat}
+                  title="Collaborator Real-time Chat (End-to-End Encrypted)"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', position: 'relative' }}
+                >
+                  <MessageSquare size={14} />
+                  <span className="nav-btn-text">Chat</span>
+                  {unreadChatCount > 0 && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        backgroundColor: '#ef4444',
+                        color: '#fff',
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        borderRadius: '10px',
+                        minWidth: '16px',
+                        height: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0 4px',
+                        boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+                      }}
+                    >
+                      {unreadChatCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {/* Save Button with Visual Feedback */}
+              <button
+                className={`btn btn-sm nav-action-btn ${isSaved ? 'btn-secondary' : 'btn-primary'}`}
+                onClick={onSaveCodeshare}
+                title={isSaved ? "Saved in your library (click to re-sync)" : "Save to your PasteCodex library"}
+                style={isSaved ? { borderColor: '#10b981', color: '#34d399' } : undefined}
+              >
+                {isSaved ? <BookmarkCheck size={14} color="#10b981" /> : <Bookmark size={14} />}
+                <span className="nav-btn-text">{isSaved ? 'Saved' : 'Save'}</span>
+              </button>
+            </div>
 
             <button
               className="btn btn-sm btn-secondary nav-action-btn"
@@ -386,61 +391,77 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="nav-btn-text" style={{ fontSize: '0.75rem' }}>{quickCopied ? 'Copied' : 'Copy'}</span>
               </button>
             )}
-          </>
-        )}
 
-        {/* Saved Codeshares Library Button */}
-        {onOpenSavedLibrary && currentUser && !currentUser.isAnonymous && (
-          <button
-            className="btn btn-sm btn-secondary"
-            onClick={onOpenSavedLibrary}
-            title="View your saved codeshares library"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <Library size={14} color="#60a5fa" />
-            <span>Saved ({currentUser.savedCodeshares.length})</span>
-          </button>
-        )}
-
-        {currentUser && !currentUser.isAnonymous ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <div
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10b981', fontSize: '0.85rem', cursor: onOpenSavedLibrary ? 'pointer' : 'default' }}
-              onClick={onOpenSavedLibrary}
-              title="Click to view saved codeshares"
-            >
-              <UserCheck size={16} />
-              <span>{currentUser.name || currentUser.email}</span>
-            </div>
-            {onLogout && (
+            {/* Mobile Menu Trigger Button */}
+            {onOpenMobileDrawer && (
               <button
-                className="btn btn-sm btn-secondary"
-                onClick={onLogout}
-                title="Log out"
-                style={{ padding: '0.3rem 0.5rem', color: 'var(--text-muted)' }}
+                className="btn btn-sm btn-secondary mobile-only-menu-btn"
+                onClick={onOpenMobileDrawer}
+                title="Open workspace menu & tools"
+                aria-label="Open workspace menu"
+                style={{ padding: '0.35rem 0.55rem' }}
               >
-                <LogOut size={13} />
-                <span style={{ fontSize: '0.75rem' }}>Log out</span>
+                <MoreHorizontal size={16} />
               </button>
             )}
-          </div>
-        ) : (
-          <>
-            <button
-              className="btn btn-sm btn-secondary"
-              onClick={() => onNavigate('/login')}
-            >
-              <LogIn size={14} />
-              <span>Log In</span>
-            </button>
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={() => onNavigate('/register')}
-            >
-              Sign Up
-            </button>
           </>
         )}
+
+        {/* Desktop-only Auth & Saved Buttons */}
+        <div className="desktop-nav-group" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          {/* Saved Codeshares Library Button */}
+          {onOpenSavedLibrary && currentUser && !currentUser.isAnonymous && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={onOpenSavedLibrary}
+              title="View your saved codeshares library"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <Library size={14} color="#60a5fa" />
+              <span>Saved ({currentUser.savedCodeshares.length})</span>
+            </button>
+          )}
+
+          {currentUser && !currentUser.isAnonymous ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10b981', fontSize: '0.85rem', cursor: onOpenSavedLibrary ? 'pointer' : 'default' }}
+                onClick={onOpenSavedLibrary}
+                title="Click to view saved codeshares"
+              >
+                <UserCheck size={16} />
+                <span>{currentUser.name || currentUser.email}</span>
+              </div>
+              {onLogout && (
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={onLogout}
+                  title="Log out"
+                  style={{ padding: '0.3rem 0.5rem', color: 'var(--text-muted)' }}
+                >
+                  <LogOut size={13} />
+                  <span style={{ fontSize: '0.75rem' }}>Log out</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => onNavigate('/login')}
+              >
+                <LogIn size={14} />
+                <span>Log In</span>
+              </button>
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => onNavigate('/register')}
+              >
+                Sign Up
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </header>
   );

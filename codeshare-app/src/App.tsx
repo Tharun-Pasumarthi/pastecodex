@@ -9,9 +9,11 @@ import { SavedModal } from './components/SavedModal';
 import { Home } from './components/Home';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
-import type { EditorSettings, Collaborator, User, AttachedMedia, ActiveTab, ExpirationOption, TextCell } from './types';
+import type { EditorSettings, Collaborator, User, AttachedMedia, ActiveTab, ExpirationOption, TextCell, CellType, SyntaxMode } from './types';
 import { generateCodeshareId, getExtensionForMode } from './utils/slug';
-import { createDefaultCell } from './utils/cellUtils';
+import { createDefaultCell, serializeCellsToContent } from './utils/cellUtils';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { MobileDrawer } from './components/MobileDrawer';
 import {
   addDeviceSavedSession,
   removeDeviceSavedSession,
@@ -105,6 +107,8 @@ export function App() {
   const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
   const [isFileUploadOpen, setIsFileUploadOpen] = useState<boolean>(false);
   const [isSavedModalOpen, setIsSavedModalOpen] = useState<boolean>(false);
+  const [isNotebookMode, setIsNotebookMode] = useState<boolean>(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
 
   // In-app Toast feedback
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
@@ -356,6 +360,7 @@ export function App() {
     setAttachedMedia(null);
     setAttachedMediaList([]);
     setActiveTab('code');
+    setIsNotebookMode(false);
     setExpiration('never');
     setViewOnly(false);
     viewOnlyRef.current = false;
@@ -424,12 +429,14 @@ export function App() {
             if (docData.cells && Array.isArray(docData.cells) && docData.cells.length > 0) {
               setCells(docData.cells);
               cellsRef.current = docData.cells;
+              setIsNotebookMode(docData.cells.length > 1);
             } else if (typeof docData.content === 'string') {
               const defaultCells = [
                 createDefaultCell('code', docData.settings?.modeName || 'javascript', docData.content, 'Main Code'),
               ];
               setCells(defaultCells);
               cellsRef.current = defaultCells;
+              setIsNotebookMode(false);
             }
             if (docData.settings) setSettings(docData.settings);
             if (docData.expiration) setExpiration(docData.expiration);
@@ -937,6 +944,32 @@ export function App() {
     ? generateShareableUrl(codeshareId, encryptionKey, viewOnly)
     : '';
 
+  // Mobile navigation handlers
+  const handleAddCellFromMobile = useCallback((type: CellType) => {
+    let lang: SyntaxMode = 'javascript';
+    if (type === 'markdown') lang = 'markdown';
+    else if (type === 'json') lang = 'json';
+    else if (type === 'text') lang = 'plaintext';
+    else lang = settings.modeName;
+
+    const newCell = createDefaultCell(type, lang, '');
+    const updated = [...cellsRef.current, newCell];
+    setCells(updated);
+    cellsRef.current = updated;
+    setContent(serializeCellsToContent(updated));
+    setIsNotebookMode(true);
+    setActiveTab('code');
+    showToast(`Added new ${type.toUpperCase()} cell!`, 'info');
+  }, [settings.modeName, showToast]);
+
+  const handleOpenFilesFromMobile = useCallback(() => {
+    if (attachedMediaList.length > 0 || attachedMedia) {
+      setActiveTab(attachedMediaList[0]?.id || 'pdf');
+    } else {
+      setIsFileUploadOpen(true);
+    }
+  }, [attachedMedia, attachedMediaList]);
+
   return (
     <div className="app-container">
       {/* Toast Notification */}
@@ -991,6 +1024,7 @@ export function App() {
         onToggleChat={handleToggleChat}
         isChatOpen={isChatOpen}
         unreadChatCount={unreadChatCount}
+        onOpenMobileDrawer={() => setIsMobileDrawerOpen(true)}
       />
 
       {/* View routing */}
@@ -1058,6 +1092,8 @@ export function App() {
               settings={settings}
               viewOnly={viewOnly}
               collaborators={collaborators}
+              isNotebookMode={isNotebookMode}
+              onToggleNotebookMode={setIsNotebookMode}
             />
           )}
 
@@ -1125,6 +1161,55 @@ export function App() {
           />
         </div>
       )}
+
+      {/* Thumb-friendly Persistent Mobile Bottom Navigation */}
+      {codeshareId && (
+        <MobileBottomNav
+          isNotebookMode={isNotebookMode}
+          onToggleNotebookMode={(val) => {
+            setIsNotebookMode(val);
+            setActiveTab('code');
+          }}
+          cellCount={cells.length}
+          onAddCell={handleAddCellFromMobile}
+          attachedCount={attachedMediaList.length > 0 ? attachedMediaList.length : (attachedMedia ? 1 : 0)}
+          onOpenFiles={handleOpenFilesFromMobile}
+          isChatOpen={isChatOpen}
+          onToggleChat={handleToggleChat}
+          unreadChatCount={unreadChatCount}
+          onOpenDrawer={() => setIsMobileDrawerOpen(true)}
+          viewOnly={viewOnly}
+        />
+      )}
+
+      {/* Slide-up Mobile Workspace Menu & Tools Drawer */}
+      <MobileDrawer
+        isOpen={isMobileDrawerOpen}
+        onClose={() => setIsMobileDrawerOpen(false)}
+        title={docTitle}
+        onUpdateTitle={setDocTitle}
+        settings={settings}
+        onUpdateSettings={setSettings}
+        viewOnly={viewOnly}
+        onToggleViewOnly={handleToggleViewOnly}
+        expiration={expiration}
+        onUpdateExpiration={handleUpdateExpiration}
+        codeshareId={codeshareId}
+        shareUrl={shareUrl}
+        onOpenShare={() => setIsShareOpen(true)}
+        onDownload={handleDownload}
+        onSaveCodeshare={handleSaveCodeshare}
+        onOpenSavedLibrary={() => setIsSavedModalOpen(true)}
+        onNewCodeshare={handleCreateNewCodeshare}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onNavigate={navigate}
+        isNotebookMode={isNotebookMode}
+        onToggleNotebookMode={setIsNotebookMode}
+        cellCount={cells.length}
+        attachedCount={attachedMediaList.length > 0 ? attachedMediaList.length : (attachedMedia ? 1 : 0)}
+        onOpenFileUpload={() => setIsFileUploadOpen(true)}
+      />
     </div>
   );
 }

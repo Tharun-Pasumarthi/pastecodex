@@ -35,7 +35,6 @@ const {
   createDefaultCell,
   serializeCellsToContent,
   ensureValidCells,
-  generateCellId,
 } = await import('../src/utils/cellUtils.ts');
 
 test('SessionManager: saves and retrieves device-level sessions across logouts', () => {

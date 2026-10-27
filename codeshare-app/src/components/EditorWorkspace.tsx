@@ -25,6 +25,8 @@ interface EditorWorkspaceProps {
   settings: EditorSettings;
   viewOnly: boolean;
   collaborators: Collaborator[];
+  isNotebookMode?: boolean;
+  onToggleNotebookMode?: (isNotebook: boolean) => void;
 }
 
 export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
@@ -35,9 +37,12 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
   settings,
   viewOnly,
   collaborators,
+  isNotebookMode: controlledNotebookMode,
+  onToggleNotebookMode,
 }) => {
-  // If multiple cells exist, default to notebook view
-  const [isNotebookMode, setIsNotebookMode] = useState<boolean>(() => cells.length > 1);
+  const [internalNotebookMode, setInternalNotebookMode] = useState<boolean>(() => cells.length > 1);
+  const isNotebookMode = typeof controlledNotebookMode === 'boolean' ? controlledNotebookMode : internalNotebookMode;
+  const setIsNotebookMode = onToggleNotebookMode || setInternalNotebookMode;
 
   const extensions = useMemo(() => {
     return getLanguageExtension(settings.modeName);
@@ -258,6 +263,7 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
             {/* Bottom Add Cell Bar */}
             {!viewOnly && (
               <div
+                className="notebook-bottom-add-bar"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
