@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Code2, Clock, Users, Bookmark, BookmarkCheck, LogIn, UserCheck, Paperclip, FileText, Image as ImageIcon, ShieldCheck, LogOut, Check, Copy, Plus, Library } from 'lucide-react';
+import { Code2, Clock, Users, Bookmark, BookmarkCheck, LogIn, UserCheck, Paperclip, FileText, Image as ImageIcon, ShieldCheck, LogOut, Check, Copy, Plus, Library, MessageSquare } from 'lucide-react';
 import type { User, Collaborator, AttachedMedia, ActiveTab, ExpirationOption } from '../types';
 
 interface NavbarProps {
@@ -23,6 +23,10 @@ interface NavbarProps {
   onLogout?: () => void;
   shareUrl?: string;
   isSaved?: boolean;
+  isSyncing?: boolean;
+  onToggleChat?: () => void;
+  isChatOpen?: boolean;
+  unreadChatCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -45,6 +49,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   shareUrl,
   isSaved = false,
+  isSyncing = false,
+  onToggleChat,
+  isChatOpen = false,
+  unreadChatCount = 0,
 }) => {
   const isEditor = Boolean(codeshareId && currentPath.startsWith('/'));
   const [quickCopied, setQuickCopied] = useState(false);
@@ -203,6 +211,35 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="header__right">
         {isEditor && (
           <>
+            {/* Live Instant Save Status Feedback */}
+            <div
+              className="badge-save-status"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                fontSize: '0.75rem',
+                padding: '0.2rem 0.55rem',
+                borderRadius: '12px',
+                background: isSyncing ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                border: isSyncing ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)',
+                color: isSyncing ? '#60a5fa' : '#34d399',
+                fontWeight: 500,
+              }}
+              title={isSyncing ? 'Syncing updates...' : 'All changes saved instantly in real-time'}
+            >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: isSyncing ? '#60a5fa' : '#10b981',
+                  boxShadow: isSyncing ? '0 0 6px #60a5fa' : '0 0 6px #10b981',
+                }}
+              />
+              <span className="nav-btn-text">{isSyncing ? 'Saving...' : 'Saved'}</span>
+            </div>
+
             {/* Dynamic Expiration Badge (Optional Expiration) */}
             {expiration === 'never' ? (
               <div
@@ -245,6 +282,42 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'Attach'}
               </span>
             </button>
+
+            {/* Collaborator Chat Drawer Button */}
+            {onToggleChat && (
+              <button
+                className={`btn btn-sm nav-action-btn ${isChatOpen ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={onToggleChat}
+                title="Collaborator Real-time Chat (End-to-End Encrypted)"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', position: 'relative' }}
+              >
+                <MessageSquare size={14} />
+                <span className="nav-btn-text">Chat</span>
+                {unreadChatCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      backgroundColor: '#ef4444',
+                      color: '#fff',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      borderRadius: '10px',
+                      minWidth: '16px',
+                      height: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 4px',
+                      boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+                    }}
+                  >
+                    {unreadChatCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Save Button with Visual Feedback */}
             <button

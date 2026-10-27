@@ -22,7 +22,20 @@ import {
   fetchAndDecryptAllMediaFromFirebase,
   deleteMediaFromFirebase,
 } from './utils/firebaseStorage';
-import { saveDocument, fetchDocument, subscribeToRoomSync, type DocumentSyncData } from './utils/documentSync';
+import {
+  saveDocument,
+  fetchDocument,
+  subscribeToRoomSync,
+  onSyncStatusChange,
+  type DocumentSyncData,
+} from './utils/documentSync';
+import { ChatDrawer } from './components/ChatDrawer';
+import {
+  type ChatMessage,
+  getLocalChatMessages,
+  sendChatMessage,
+  subscribeToChatMessages,
+} from './utils/chatSync';
 import { Check, Info } from 'lucide-react';
 
 export function App() {
@@ -88,6 +101,20 @@ export function App() {
   const [attachedMedia, setAttachedMedia] = useState<AttachedMedia | null>(null);
   const [attachedMediaList, setAttachedMediaList] = useState<AttachedMedia[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>('code');
+
+  // Live Instant Save Status Feedback
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Collaborator Real-time Chat State
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+
+  useEffect(() => {
+    return onSyncStatusChange((saving) => {
+      setIsSyncing(saving);
+    });
+  }, []);
 
   const [settings, setSettings] = useState<EditorSettings>({
     modeName: 'javascript',
@@ -371,9 +398,21 @@ export function App() {
           setExpiration(remoteData.expiration);
         }
         if (remoteData.attachedMediaList !== undefined) {
-          setAttachedMediaList(remoteData.attachedMediaList);
+          setAttachedMediaList((prevList) => {
+            const incoming = remoteData.attachedMediaList || [];
+            return incoming.map((item) => {
+              const existing = prevList.find((p) => p.id === item.id);
+              if (existing && existing.dataUrl) {
+                return { ...item, dataUrl: existing.dataUrl };
+              }
+              return item;
+            });
+          });
           if (remoteData.attachedMediaList.length > 0) {
-            setAttachedMedia(remoteData.attachedMediaList[0]);
+            setAttachedMedia((prev) => {
+              if (prev && prev.dataUrl) return prev;
+              return remoteData.attachedMediaList![0];
+            });
           }
         } else if (remoteData.attachedMedia !== undefined) {
           setAttachedMedia(remoteData.attachedMedia);
@@ -393,6 +432,53 @@ export function App() {
       unsubscribe();
     };
   }, [codeshareId]);
+
+  // Real-time Collaborator Chat subscription
+  useEffect(() => {
+    if (!codeshareId || !encryptionKey) return;
+    const initial = getLocalChatMessages(codeshareId);
+    setChatMessages(initial);
+
+    const unsub = subscribeToChatMessages(
+      codeshareId,
+      tabIdRef.current,
+      encryptionKey,
+      (messages) => {
+        setChatMessages(messages);
+        if (!isChatOpen) {
+          setUnreadChatCount((prev) => prev + 1);
+        }
+      }
+    );
+
+    return () => {
+      unsub();
+    };
+  }, [codeshareId, encryptionKey, isChatOpen]);
+
+  const handleSendChatMessage = useCallback((text: string) => {
+    if (!codeshareId || !text.trim()) return;
+    const senderName = currentUser?.name || (currentUser?.isAnonymous ? 'Collaborator' : currentUser?.email) || 'Developer';
+    const newMsg: ChatMessage = {
+      id: 'msg_' + Math.random().toString(36).substr(2, 9),
+      senderId: tabIdRef.current,
+      senderName,
+      senderColor: '#3b82f6',
+      text: text.trim(),
+      timestamp: Date.now(),
+      status: 'sent',
+    };
+    // 0ms optimistic immediate update
+    setChatMessages((prev) => [...prev, newMsg]);
+    sendChatMessage(codeshareId, newMsg, encryptionKey);
+  }, [codeshareId, encryptionKey, currentUser]);
+
+  const handleToggleChat = useCallback(() => {
+    setIsChatOpen((prev) => {
+      if (!prev) setUnreadChatCount(0);
+      return !prev;
+    });
+  }, []);
 
   // Fast responsive auto-save with coalescing (latency reduced to 40ms)
   useEffect(() => {
@@ -707,6 +793,10 @@ export function App() {
         onLogout={handleLogout}
         shareUrl={shareUrl}
         isSaved={isCurrentDocSaved}
+        isSyncing={isSyncing}
+        onToggleChat={handleToggleChat}
+        isChatOpen={isChatOpen}
+        unreadChatCount={unreadChatCount}
       />
 
       {/* View routing */}
@@ -785,6 +875,18 @@ export function App() {
             attachedMedia={attachedMedia}
             attachedMediaList={attachedMediaList}
             onOpenFileUpload={() => setIsFileUploadOpen(true)}
+            onToggleChat={handleToggleChat}
+            isChatOpen={isChatOpen}
+            unreadChatCount={unreadChatCount}
+          />
+
+          <ChatDrawer
+            isOpen={isChatOpen}
+            onClose={() => setIsChatOpen(false)}
+            messages={chatMessages}
+            onSendMessage={handleSendChatMessage}
+            mySenderId={tabIdRef.current}
+            mySenderName={currentUser?.name || 'You'}
           />
 
           <ShareModal

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Download, Plus, Info, X, Check, Paperclip, FileText, Image as ImageIcon } from 'lucide-react';
+import { Settings, Download, Plus, Info, X, Check, Paperclip, FileText, Image as ImageIcon, MessageSquare } from 'lucide-react';
 import type { EditorSettings, SyntaxMode, EditorTheme, KeymapMode, AttachedMedia } from '../types';
 import { SYNTAX_OPTIONS } from '../utils/languages';
 
@@ -16,6 +16,9 @@ interface SidebarProps {
   attachedMedia?: AttachedMedia | null;
   attachedMediaList?: AttachedMedia[];
   onOpenFileUpload?: () => void;
+  onToggleChat?: () => void;
+  isChatOpen?: boolean;
+  unreadChatCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,6 +34,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   attachedMedia,
   attachedMediaList = [],
   onOpenFileUpload,
+  onToggleChat,
+  isChatOpen = false,
+  unreadChatCount = 0,
 }) => {
   return (
     <aside className={`cs-sidebar ${activePanel ? 'is-open' : ''}`}>
@@ -226,6 +232,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </button>
           </li>
+          {onToggleChat && (
+            <li>
+              <button
+                className={`btn-icon ${isChatOpen ? 'is-active' : ''}`}
+                onClick={onToggleChat}
+                title="Collaborator Chat"
+                style={{ position: 'relative' }}
+              >
+                <MessageSquare size={20} color={isChatOpen ? '#3b82f6' : 'currentColor'} />
+                {unreadChatCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      right: '4px',
+                      backgroundColor: '#ef4444',
+                      color: '#fff',
+                      fontSize: '0.6rem',
+                      fontWeight: 700,
+                      borderRadius: '8px',
+                      minWidth: '14px',
+                      height: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 3px',
+                    }}
+                  >
+                    {unreadChatCount}
+                  </span>
+                )}
+              </button>
+            </li>
+          )}
           <li>
             <button
               id="codeshare-download-button"
