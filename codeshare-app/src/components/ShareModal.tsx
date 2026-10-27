@@ -35,7 +35,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  const baseUrl = `${window.location.origin}/${codeshareId}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const query = viewOnly ? '?v=1' : '';
+  const baseUrl = `${origin}/${codeshareId}${query}`;
   const shareUrl = useEncryptedLink ? `${baseUrl}#key=${encryptionKey}` : baseUrl;
 
   // Instant zero-latency copy with immediate visual feedback

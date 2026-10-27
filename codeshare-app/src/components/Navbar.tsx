@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Code2, Clock, Users, Bookmark, BookmarkCheck, LogIn, UserCheck, Paperclip, FileText, Image as ImageIcon, ShieldCheck, LogOut, Check, Copy, Plus, Library, MessageSquare } from 'lucide-react';
+import { Code2, Clock, Users, Bookmark, BookmarkCheck, LogIn, UserCheck, Paperclip, FileText, Image as ImageIcon, ShieldCheck, LogOut, Check, Copy, Plus, Library, MessageSquare, Lock } from 'lucide-react';
 import type { User, Collaborator, AttachedMedia, ActiveTab, ExpirationOption } from '../types';
 
 interface NavbarProps {
@@ -33,6 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentPath,
   codeshareId,
   docTitle,
+  viewOnly = false,
   onNavigate,
   onOpenShare,
   onSaveCodeshare,
@@ -121,6 +122,28 @@ export const Navbar: React.FC<NavbarProps> = ({
         {isEditor && docTitle && (
           <span className="header__title" title={docTitle}>
             {docTitle}
+          </span>
+        )}
+
+        {isEditor && viewOnly && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              color: '#fbbf24',
+              borderRadius: '6px',
+              padding: '0.2rem 0.55rem',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              marginLeft: '0.4rem',
+            }}
+            title="View-Only Mode is active (editing is locked)"
+          >
+            <Lock size={12} />
+            <span>View Only</span>
           </span>
         )}
 

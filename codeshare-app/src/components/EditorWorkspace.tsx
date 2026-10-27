@@ -60,8 +60,12 @@ export const EditorWorkspace: React.FC<EditorWorkspaceProps> = ({
           height="100%"
           theme={settings.theme === 'light' ? 'light' : oneDark}
           extensions={extensions}
-          onChange={onChange}
+          onChange={(val) => {
+            if (viewOnly) return;
+            onChange(val);
+          }}
           readOnly={viewOnly}
+          editable={!viewOnly}
           placeholder="Write or paste code here then share. Anyone you share with will see code as it is typed!"
           basicSetup={{
             lineNumbers: true,

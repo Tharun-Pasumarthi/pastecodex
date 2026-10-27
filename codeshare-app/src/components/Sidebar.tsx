@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Download, Plus, Info, X, Check, Paperclip, FileText, Image as ImageIcon, MessageSquare } from 'lucide-react';
+import { Settings, Download, Plus, Info, X, Check, Paperclip, FileText, Image as ImageIcon, MessageSquare, Lock } from 'lucide-react';
 import type { EditorSettings, SyntaxMode, EditorTheme, KeymapMode, AttachedMedia } from '../types';
 import { SYNTAX_OPTIONS } from '../utils/languages';
 
@@ -13,6 +13,8 @@ interface SidebarProps {
   activePanel: 'settings' | 'about' | null;
   onTogglePanel: (panel: 'settings' | 'about') => void;
   onClosePanel: () => void;
+  viewOnly?: boolean;
+  onToggleViewOnly?: (val: boolean) => void;
   attachedMedia?: AttachedMedia | null;
   attachedMediaList?: AttachedMedia[];
   onOpenFileUpload?: () => void;
@@ -31,6 +33,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activePanel,
   onTogglePanel,
   onClosePanel,
+  viewOnly = false,
+  onToggleViewOnly,
   attachedMedia,
   attachedMediaList = [],
   onOpenFileUpload,
@@ -141,6 +145,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <option value="vim">Vim</option>
                 <option value="emacs">Emacs</option>
               </select>
+            </div>
+
+            {/* View-Only Mode Toggle */}
+            <div className="switch-container" style={{ marginTop: '1.25rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-light)' }}>
+              <div className="switch-label-wrap">
+                <span className="switch-label-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Lock size={14} color="#f59e0b" />
+                  <span>View-Only Mode</span>
+                </span>
+                <span className="switch-label-desc">
+                  Lock document editing for this session.
+                </span>
+              </div>
+              <div
+                className={`toggle-switch ${viewOnly ? 'is-checked' : ''}`}
+                onClick={() => onToggleViewOnly && onToggleViewOnly(!viewOnly)}
+                role="switch"
+                aria-checked={viewOnly}
+                title="Toggle View-Only Mode"
+              >
+                <div className="toggle-handle" />
+              </div>
             </div>
 
             {(() => {

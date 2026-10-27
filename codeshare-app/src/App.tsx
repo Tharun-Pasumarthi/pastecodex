@@ -77,7 +77,16 @@ export function App() {
   const [codeshareId, setCodeshareId] = useState<string | null>(null);
   const [docTitle, setDocTitle] = useState<string>(() => formatFriendlyTimestamp());
   const [content, setContent] = useState<string>('');
-  const [viewOnly, setViewOnly] = useState<boolean>(false);
+  const [viewOnly, setViewOnly] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search || '');
+    return (
+      params.get('v') === '1' ||
+      params.get('view') === '1' ||
+      params.get('viewOnly') === 'true' ||
+      params.get('readonly') === '1'
+    );
+  });
   const [activePanel, setActivePanel] = useState<'settings' | 'about' | null>(null);
   const [isShareOpen, setIsShareOpen] = useState<boolean>(false);
   const [isFileUploadOpen, setIsFileUploadOpen] = useState<boolean>(false);
@@ -135,6 +144,7 @@ export function App() {
   const codeshareIdRef = useRef(codeshareId);
   const contentRef = useRef(content);
   const docTitleRef = useRef(docTitle);
+  const viewOnlyRef = useRef(viewOnly);
   const settingsRef = useRef(settings);
   const expirationRef = useRef(expiration);
   const encryptionKeyRef = useRef(encryptionKey);
@@ -145,12 +155,13 @@ export function App() {
     codeshareIdRef.current = codeshareId;
     contentRef.current = content;
     docTitleRef.current = docTitle;
+    viewOnlyRef.current = viewOnly;
     settingsRef.current = settings;
     expirationRef.current = expiration;
     encryptionKeyRef.current = encryptionKey;
     attachedMediaRef.current = attachedMedia;
     attachedMediaListRef.current = attachedMediaList;
-  }, [codeshareId, content, docTitle, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
+  }, [codeshareId, content, docTitle, viewOnly, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Document loaded state to prevent initial empty state from overwriting saved documents
   const [isDocLoaded, setIsDocLoaded] = useState<boolean>(false);
@@ -165,6 +176,7 @@ export function App() {
         id: codeshareIdRef.current,
         title: docTitleRef.current,
         content: contentRef.current,
+        viewOnly: viewOnlyRef.current,
         settings: settingsRef.current,
         expiration: expirationRef.current,
         encryptionKey: encryptionKeyRef.current,
@@ -258,6 +270,59 @@ export function App() {
     }
   }, [processUrlHash]);
 
+  // Keep view-only mode synchronized with URL query params (?v=1)
+  useEffect(() => {
+    const params = new URLSearchParams(currentQuery);
+    const isReadOnly =
+      params.get('v') === '1' ||
+      params.get('view') === '1' ||
+      params.get('viewOnly') === 'true' ||
+      params.get('readonly') === '1';
+    if (isReadOnly) {
+      setViewOnly(true);
+      viewOnlyRef.current = true;
+    }
+  }, [currentQuery]);
+
+  const handleToggleViewOnly = useCallback((newVal: boolean) => {
+    setViewOnly(newVal);
+    viewOnlyRef.current = newVal;
+
+    if (codeshareIdRef.current) {
+      const searchParams = new URLSearchParams(window.location.search || '');
+      if (newVal) {
+        searchParams.set('v', '1');
+      } else {
+        searchParams.delete('v');
+        searchParams.delete('view');
+        searchParams.delete('viewOnly');
+        searchParams.delete('readonly');
+      }
+      const q = searchParams.toString() ? `?${searchParams.toString()}` : '';
+      const hash = window.location.hash || '';
+      window.history.replaceState(null, '', `/${codeshareIdRef.current}${q}${hash}`);
+      setCurrentQuery(q);
+
+      if (isDocLoadedRef.current) {
+        saveDocument({
+          id: codeshareIdRef.current,
+          title: docTitleRef.current,
+          content: contentRef.current,
+          viewOnly: newVal,
+          settings: settingsRef.current,
+          expiration: expirationRef.current,
+          encryptionKey: encryptionKeyRef.current,
+          attachedMedia: attachedMediaRef.current,
+          attachedMediaList: attachedMediaListRef.current,
+          timestamp: Date.now(),
+          senderId: tabIdRef.current,
+        });
+      }
+    }
+
+    showToast(newVal ? 'View-only mode activated: editing locked' : 'Editing unlocked', 'info');
+  }, [showToast]);
+
   // Dedicated handler to reliably create a fresh new codeshare session
   const handleCreateNewCodeshare = useCallback(() => {
     const newSlug = generateCodeshareId();
@@ -273,6 +338,7 @@ export function App() {
     setActiveTab('code');
     setExpiration('never');
     setViewOnly(false);
+    viewOnlyRef.current = false;
     setActivePanel(null);
     setIsShareOpen(false);
     setIsFileUploadOpen(false);
@@ -280,11 +346,15 @@ export function App() {
     setIsDocLoaded(true);
     isDocLoadedRef.current = true;
 
+    // Clear ?v=1 if present
+    setCurrentQuery('');
+
     // Save initial document record immediately
     saveDocument({
       id: newSlug,
       title: formatted,
       content: '',
+      viewOnly: false,
       settings: {
         modeName: 'javascript',
         tabSize: 2,
@@ -349,6 +419,17 @@ export function App() {
               setAttachedMediaList([docData.attachedMedia]);
             }
 
+            // Restore view-only state from document or current URL query
+            const searchParams = new URLSearchParams(window.location.search || '');
+            const urlReadOnly =
+              searchParams.get('v') === '1' ||
+              searchParams.get('view') === '1' ||
+              searchParams.get('viewOnly') === 'true' ||
+              searchParams.get('readonly') === '1';
+            const effectiveViewOnly = Boolean(docData.viewOnly || urlReadOnly);
+            setViewOnly(effectiveViewOnly);
+            viewOnlyRef.current = effectiveViewOnly;
+
             // Restore encryption key and sync to URL hash if missing
             const effectiveKey = docData.encryptionKey || encryptionKeyRef.current;
             if (docData.encryptionKey) {
@@ -360,6 +441,14 @@ export function App() {
           } else {
             // First time opening this slug
             setDocTitle(formatFriendlyTimestamp());
+            const searchParams = new URLSearchParams(window.location.search || '');
+            const urlReadOnly =
+              searchParams.get('v') === '1' ||
+              searchParams.get('view') === '1' ||
+              searchParams.get('viewOnly') === 'true' ||
+              searchParams.get('readonly') === '1';
+            setViewOnly(urlReadOnly);
+            viewOnlyRef.current = urlReadOnly;
           }
 
           // Mark document as safely loaded so auto-save can engage
@@ -387,6 +476,7 @@ export function App() {
           id: codeshareId,
           title: docTitleRef.current,
           content: contentRef.current,
+          viewOnly: viewOnlyRef.current,
           settings: settingsRef.current,
           expiration: expirationRef.current,
           encryptionKey: encryptionKeyRef.current,
@@ -403,6 +493,17 @@ export function App() {
         }
         if (remoteData.title && remoteData.title !== docTitleRef.current) {
           setDocTitle(remoteData.title);
+        }
+        if (typeof remoteData.viewOnly === 'boolean') {
+          const searchParams = new URLSearchParams(window.location.search || '');
+          const urlReadOnly =
+            searchParams.get('v') === '1' ||
+            searchParams.get('view') === '1' ||
+            searchParams.get('viewOnly') === 'true' ||
+            searchParams.get('readonly') === '1';
+          const effective = remoteData.viewOnly || urlReadOnly;
+          setViewOnly(effective);
+          viewOnlyRef.current = effective;
         }
         if (remoteData.settings) {
           setSettings(remoteData.settings);
@@ -503,6 +604,7 @@ export function App() {
         id: codeshareId,
         title: docTitle,
         content,
+        viewOnly,
         settings,
         expiration,
         encryptionKey,
@@ -517,7 +619,7 @@ export function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [codeshareId, isDocLoaded, docTitle, content, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
+  }, [codeshareId, isDocLoaded, docTitle, content, viewOnly, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Handle Expiration updates (optional expiration)
   const handleUpdateExpiration = (exp: ExpirationOption) => {
@@ -668,6 +770,7 @@ export function App() {
       id: codeshareId,
       title: docTitle,
       content,
+      viewOnly,
       settings,
       expiration,
       encryptionKey,
@@ -758,7 +861,7 @@ export function App() {
 
   // Active clean share URL with zero-knowledge encryption key in URL fragment (~75 chars)
   const shareUrl = codeshareId
-    ? generateShareableUrl(codeshareId, encryptionKey)
+    ? generateShareableUrl(codeshareId, encryptionKey, viewOnly)
     : '';
 
   return (
@@ -873,7 +976,10 @@ export function App() {
           ) : (
             <EditorWorkspace
               content={content}
-              onChange={setContent}
+              onChange={(val) => {
+                if (viewOnly) return;
+                setContent(val);
+              }}
               settings={settings}
               viewOnly={viewOnly}
               collaborators={collaborators}
@@ -890,6 +996,8 @@ export function App() {
             activePanel={activePanel}
             onTogglePanel={(p) => setActivePanel(activePanel === p ? null : p)}
             onClosePanel={() => setActivePanel(null)}
+            viewOnly={viewOnly}
+            onToggleViewOnly={handleToggleViewOnly}
             attachedMedia={attachedMedia}
             attachedMediaList={attachedMediaList}
             onOpenFileUpload={() => setIsFileUploadOpen(true)}
@@ -912,7 +1020,7 @@ export function App() {
             isOpen={isShareOpen}
             onClose={() => setIsShareOpen(false)}
             viewOnly={viewOnly}
-            onToggleViewOnly={setViewOnly}
+            onToggleViewOnly={handleToggleViewOnly}
             collaborators={collaborators}
             encryptionKey={encryptionKey}
             attachedMedia={attachedMedia}

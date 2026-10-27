@@ -17,6 +17,7 @@ export interface DocumentSyncData {
   id: string;
   title: string;
   content: string;
+  viewOnly?: boolean;
   settings: EditorSettings;
   expiration: ExpirationOption;
   encryptionKey?: string;

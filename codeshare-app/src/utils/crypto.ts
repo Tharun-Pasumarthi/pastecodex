@@ -163,10 +163,12 @@ export function parseHashParams(hashStr: string): { key?: string; docToken?: str
  */
 export function generateShareableUrl(
   codeshareId: string,
-  key?: string
+  key?: string,
+  viewOnly: boolean = false
 ): string {
-  const origin = window.location.origin;
-  const baseUrl = `${origin}/${codeshareId}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const query = viewOnly ? '?v=1' : '';
+  const baseUrl = `${origin}/${codeshareId}${query}`;
   return key ? `${baseUrl}#key=${key}` : baseUrl;
 }
 
