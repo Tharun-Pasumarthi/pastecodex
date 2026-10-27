@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Bookmark, Code2, Trash2, ExternalLink, Plus, Clock } from 'lucide-react';
 import type { User } from '../types';
 import { fetchDocument } from '../utils/documentSync';
+import { getAllAccessibleSessions, removeDeviceSavedSession } from '../utils/sessionManager';
 
 export interface SavedItemMeta {
   id: string;
@@ -30,7 +31,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
   onRemoveSaved,
   onNewCodeshare,
 }) => {
-  const savedIds = currentUser?.savedCodeshares || [];
+  const savedIds = getAllAccessibleSessions(currentUser);
   const savedIdsKey = savedIds.join(',');
 
   const [items, setItems] = useState<SavedItemMeta[]>(() => {
@@ -88,7 +89,7 @@ export const SavedModal: React.FC<SavedModalProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [savedIdsKey]);
+  }, [savedIdsKey, savedIds]);
 
   if (!isOpen) return null;
 
@@ -240,7 +241,10 @@ export const SavedModal: React.FC<SavedModalProps> = ({
                     </button>
                     <button
                       className="btn-icon"
-                      onClick={() => onRemoveSaved(item.id)}
+                      onClick={() => {
+                        removeDeviceSavedSession(item.id);
+                        onRemoveSaved(item.id);
+                      }}
                       title="Remove from saved library"
                       style={{ color: '#ef4444', padding: '0.4rem' }}
                     >

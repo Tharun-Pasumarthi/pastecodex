@@ -9,8 +9,15 @@ import { SavedModal } from './components/SavedModal';
 import { Home } from './components/Home';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
-import type { EditorSettings, Collaborator, User, AttachedMedia, ActiveTab, ExpirationOption } from './types';
+import type { EditorSettings, Collaborator, User, AttachedMedia, ActiveTab, ExpirationOption, TextCell } from './types';
 import { generateCodeshareId, getExtensionForMode } from './utils/slug';
+import { createDefaultCell } from './utils/cellUtils';
+import {
+  addDeviceSavedSession,
+  removeDeviceSavedSession,
+  saveAccountSessions,
+  getAllAccessibleSessions,
+} from './utils/sessionManager';
 import {
   generateEncryptionKey,
   generateShareableUrl,
@@ -59,17 +66,22 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const cached = localStorage.getItem('codeshare_current_user');
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        parsed.savedCodeshares = getAllAccessibleSessions(parsed);
+        return parsed;
+      }
     } catch {
       // ignore
     }
+    const deviceSessions = getAllAccessibleSessions(null);
     return {
       id: 'usr_' + Math.random().toString(36).substring(2, 11),
       name: '',
       email: '',
       isAnonymous: true,
       isPro: false,
-      savedCodeshares: [],
+      savedCodeshares: deviceSessions,
     };
   });
 
@@ -77,6 +89,8 @@ export function App() {
   const [codeshareId, setCodeshareId] = useState<string | null>(null);
   const [docTitle, setDocTitle] = useState<string>(() => formatFriendlyTimestamp());
   const [content, setContent] = useState<string>('');
+  const [cells, setCells] = useState<TextCell[]>(() => [createDefaultCell('code', 'javascript', '')]);
+  const cellsRef = useRef<TextCell[]>(cells);
   const [viewOnly, setViewOnly] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search || '');
@@ -154,6 +168,7 @@ export function App() {
   useEffect(() => {
     codeshareIdRef.current = codeshareId;
     contentRef.current = content;
+    cellsRef.current = cells;
     docTitleRef.current = docTitle;
     viewOnlyRef.current = viewOnly;
     settingsRef.current = settings;
@@ -161,7 +176,7 @@ export function App() {
     encryptionKeyRef.current = encryptionKey;
     attachedMediaRef.current = attachedMedia;
     attachedMediaListRef.current = attachedMediaList;
-  }, [codeshareId, content, docTitle, viewOnly, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
+  }, [codeshareId, content, cells, docTitle, viewOnly, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Document loaded state to prevent initial empty state from overwriting saved documents
   const [isDocLoaded, setIsDocLoaded] = useState<boolean>(false);
@@ -176,6 +191,7 @@ export function App() {
         id: codeshareIdRef.current,
         title: docTitleRef.current,
         content: contentRef.current,
+        cells: cellsRef.current,
         viewOnly: viewOnlyRef.current,
         settings: settingsRef.current,
         expiration: expirationRef.current,
@@ -308,6 +324,7 @@ export function App() {
           id: codeshareIdRef.current,
           title: docTitleRef.current,
           content: contentRef.current,
+          cells: cellsRef.current,
           viewOnly: newVal,
           settings: settingsRef.current,
           expiration: expirationRef.current,
@@ -328,11 +345,14 @@ export function App() {
     const newSlug = generateCodeshareId();
     const newKey = generateEncryptionKey();
     const formatted = formatFriendlyTimestamp();
+    const initialCells = [createDefaultCell('code', 'javascript', '', 'Main Code')];
 
     // Reset editor state
     setCodeshareId(newSlug);
     setDocTitle(formatted);
     setContent('');
+    setCells(initialCells);
+    cellsRef.current = initialCells;
     setAttachedMedia(null);
     setAttachedMediaList([]);
     setActiveTab('code');
@@ -354,6 +374,7 @@ export function App() {
       id: newSlug,
       title: formatted,
       content: '',
+      cells: initialCells,
       viewOnly: false,
       settings: {
         modeName: 'javascript',
@@ -400,8 +421,21 @@ export function App() {
           if (docData) {
             if (docData.title) setDocTitle(docData.title);
             if (typeof docData.content === 'string') setContent(docData.content);
+            if (docData.cells && Array.isArray(docData.cells) && docData.cells.length > 0) {
+              setCells(docData.cells);
+              cellsRef.current = docData.cells;
+            } else if (typeof docData.content === 'string') {
+              const defaultCells = [
+                createDefaultCell('code', docData.settings?.modeName || 'javascript', docData.content, 'Main Code'),
+              ];
+              setCells(defaultCells);
+              cellsRef.current = defaultCells;
+            }
             if (docData.settings) setSettings(docData.settings);
             if (docData.expiration) setExpiration(docData.expiration);
+
+            // Record this visited session in local device history
+            addDeviceSavedSession(slug);
 
             // Merge media list without losing in-memory decrypted blobs
             if (docData.attachedMediaList && docData.attachedMediaList.length > 0) {
@@ -441,6 +475,10 @@ export function App() {
           } else {
             // First time opening this slug
             setDocTitle(formatFriendlyTimestamp());
+            const initialCells = [createDefaultCell('code', 'javascript', '', 'Main Code')];
+            setCells(initialCells);
+            cellsRef.current = initialCells;
+            addDeviceSavedSession(slug);
             const searchParams = new URLSearchParams(window.location.search || '');
             const urlReadOnly =
               searchParams.get('v') === '1' ||
@@ -476,6 +514,7 @@ export function App() {
           id: codeshareId,
           title: docTitleRef.current,
           content: contentRef.current,
+          cells: cellsRef.current,
           viewOnly: viewOnlyRef.current,
           settings: settingsRef.current,
           expiration: expirationRef.current,
@@ -490,6 +529,10 @@ export function App() {
         isApplyingRemoteUpdateRef.current = true;
         if (remoteData.content !== contentRef.current) {
           setContent(remoteData.content);
+        }
+        if (remoteData.cells && Array.isArray(remoteData.cells) && remoteData.cells.length > 0) {
+          setCells(remoteData.cells);
+          cellsRef.current = remoteData.cells;
         }
         if (remoteData.title && remoteData.title !== docTitleRef.current) {
           setDocTitle(remoteData.title);
@@ -604,6 +647,7 @@ export function App() {
         id: codeshareId,
         title: docTitle,
         content,
+        cells,
         viewOnly,
         settings,
         expiration,
@@ -619,7 +663,7 @@ export function App() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [codeshareId, isDocLoaded, docTitle, content, viewOnly, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
+  }, [codeshareId, isDocLoaded, docTitle, content, cells, viewOnly, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Handle Expiration updates (optional expiration)
   const handleUpdateExpiration = (exp: ExpirationOption) => {
@@ -633,22 +677,27 @@ export function App() {
     }
   };
 
-  // Handle Logout
+  // Handle Logout (Preserve saved sessions across logouts)
   const handleLogout = () => {
+    if (currentUser?.email && currentUser.savedCodeshares.length > 0) {
+      saveAccountSessions(currentUser.email, currentUser.savedCodeshares);
+    }
+    const retainedSessions = getAllAccessibleSessions(currentUser);
+    retainedSessions.forEach((id) => addDeviceSavedSession(id));
     try {
       localStorage.removeItem('codeshare_current_user');
     } catch {
       // ignore
     }
     setCurrentUser({
-      id: 'usr_' + Math.random().toString(36).substr(2, 9),
+      id: 'usr_' + Math.random().toString(36).substring(2, 11),
       name: '',
       email: '',
       isAnonymous: true,
       isPro: false,
-      savedCodeshares: [],
+      savedCodeshares: retainedSessions,
     });
-    showToast('Logged out successfully.', 'info');
+    showToast('Logged out. Saved sessions preserved in your device library.', 'info');
   };
 
   // Automatically fetch & decrypt media from Firebase if attached
@@ -765,11 +814,12 @@ export function App() {
   const handleSaveCodeshare = () => {
     if (!codeshareId) return;
 
-    // Ensure current content is safely persisted in local document store
+    // Ensure current content & cells are safely persisted in local document store
     saveDocument({
       id: codeshareId,
       title: docTitle,
       content,
+      cells,
       viewOnly,
       settings,
       expiration,
@@ -779,6 +829,8 @@ export function App() {
       timestamp: Date.now(),
       senderId: tabIdRef.current,
     });
+
+    addDeviceSavedSession(codeshareId);
 
     if (currentUser && !currentUser.isAnonymous) {
       if (!currentUser.savedCodeshares.includes(codeshareId)) {
@@ -792,29 +844,50 @@ export function App() {
         } catch {
           // ignore
         }
+        if (currentUser.email) {
+          saveAccountSessions(currentUser.email, updatedUser.savedCodeshares);
+        }
         showToast(`PasteCodex "${docTitle || codeshareId}" saved to your account!`);
       } else {
         showToast(`PasteCodex "${docTitle || codeshareId}" is already saved in your library.`);
       }
     } else {
-      // User is anonymous - prompt to register/login with return link so code is preserved
-      showToast('Please log in or sign up to permanently save snippets to your library.', 'info');
-      navigate(`/register?saveCodeshare=${codeshareId}`);
+      // User is guest - saved locally to device library
+      const deviceSessions = getAllAccessibleSessions(currentUser);
+      if (!deviceSessions.includes(codeshareId)) {
+        addDeviceSavedSession(codeshareId);
+      }
+      setCurrentUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              savedCodeshares: Array.from(new Set([codeshareId, ...prev.savedCodeshares])),
+            }
+          : null
+      );
+      showToast(`PasteCodex "${docTitle || codeshareId}" saved to your device library!`);
     }
   };
 
   // Remove a codeshare from saved library
   const handleRemoveSavedCodeshare = (id: string) => {
-    if (!currentUser || currentUser.isAnonymous) return;
-    const updatedUser = {
-      ...currentUser,
-      savedCodeshares: currentUser.savedCodeshares.filter((item) => item !== id),
-    };
-    setCurrentUser(updatedUser);
-    try {
-      localStorage.setItem('codeshare_current_user', JSON.stringify(updatedUser));
-    } catch {
-      // ignore
+    removeDeviceSavedSession(id);
+    if (currentUser) {
+      const updatedUser = {
+        ...currentUser,
+        savedCodeshares: currentUser.savedCodeshares.filter((item) => item !== id),
+      };
+      setCurrentUser(updatedUser);
+      if (!currentUser.isAnonymous) {
+        try {
+          localStorage.setItem('codeshare_current_user', JSON.stringify(updatedUser));
+        } catch {
+          // ignore
+        }
+        if (currentUser.email) {
+          saveAccountSessions(currentUser.email, updatedUser.savedCodeshares);
+        }
+      }
     }
     showToast('Snippet removed from your saved library.', 'info');
   };
@@ -980,6 +1053,8 @@ export function App() {
                 if (viewOnly) return;
                 setContent(val);
               }}
+              cells={cells}
+              onUpdateCells={setCells}
               settings={settings}
               viewOnly={viewOnly}
               collaborators={collaborators}

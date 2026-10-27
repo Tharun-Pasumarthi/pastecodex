@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { User } from '../types';
+import { saveAccountSessions, getDeviceSavedSessions } from '../utils/sessionManager';
 
 interface RegisterProps {
   onNavigate: (path: string) => void;
@@ -51,15 +52,21 @@ export const Register: React.FC<RegisterProps> = ({
     setTimeout(() => {
       setIsLoading(false);
       setSuccess('Account created successfully! Redirecting...');
+      const deviceSessions = getDeviceSavedSessions();
+      const combinedSessions = Array.from(
+        new Set([...(saveCodeshareId ? [saveCodeshareId] : []), ...deviceSessions])
+      );
+
       const user: User = {
-        id: 'usr_' + Math.random().toString(36).substr(2, 9),
+        id: 'usr_' + Math.random().toString(36).substring(2, 11),
         name: name.trim(),
         email: email.trim(),
         isAnonymous: false,
         isPro: false,
-        savedCodeshares: saveCodeshareId ? [saveCodeshareId] : [],
+        savedCodeshares: combinedSessions,
       };
 
+      saveAccountSessions(email.trim(), combinedSessions);
       try {
         localStorage.setItem('codeshare_current_user', JSON.stringify(user));
       } catch {

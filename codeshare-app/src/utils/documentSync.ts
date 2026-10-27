@@ -9,7 +9,7 @@
  * 4. Google Cloud Firestore real-time listeners for internet-wide live collaboration.
  */
 
-import type { EditorSettings, ExpirationOption, AttachedMedia } from '../types';
+import type { EditorSettings, ExpirationOption, AttachedMedia, TextCell } from '../types';
 import { getFirebaseServices } from './firebaseStorage';
 import { doc, setDoc, getDoc, onSnapshot, type Unsubscribe } from 'firebase/firestore';
 
@@ -17,6 +17,7 @@ export interface DocumentSyncData {
   id: string;
   title: string;
   content: string;
+  cells?: TextCell[];
   viewOnly?: boolean;
   settings: EditorSettings;
   expiration: ExpirationOption;

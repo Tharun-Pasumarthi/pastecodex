@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { User } from '../types';
+import { getAccountSavedSessions, saveAccountSessions, getDeviceSavedSessions } from '../utils/sessionManager';
 
 interface LoginProps {
   onNavigate: (path: string) => void;
@@ -74,16 +75,24 @@ export const Login: React.FC<LoginProps> = ({
       setIsLoading(false);
       setSuccess('Successfully logged in! Restoring session...');
 
+      // Restore all previously saved sessions for this account and device
+      const accountSessions = getAccountSavedSessions(trimmedEmail);
+      const deviceSessions = getDeviceSavedSessions();
+      const combinedSessions = Array.from(
+        new Set([...(saveCodeshareId ? [saveCodeshareId] : []), ...accountSessions, ...deviceSessions])
+      );
+
       const user: User = {
-        id: 'usr_' + Math.random().toString(36).substr(2, 9),
+        id: 'usr_' + Math.random().toString(36).substring(2, 11),
         name: trimmedEmail.split('@')[0],
         email: trimmedEmail,
         isAnonymous: false,
         isPro: true,
-        savedCodeshares: saveCodeshareId ? [saveCodeshareId] : [],
+        savedCodeshares: combinedSessions,
       };
 
-      // Persist user in localStorage so session never expires unexpectedly
+      // Persist user and account library in localStorage
+      saveAccountSessions(trimmedEmail, combinedSessions);
       try {
         localStorage.setItem('codeshare_current_user', JSON.stringify(user));
       } catch {

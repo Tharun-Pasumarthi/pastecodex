@@ -48,10 +48,22 @@ export interface AttachedMedia {
   uploadedAt: string;
 }
 
+export type CellType = 'code' | 'markdown' | 'json' | 'text';
+
+export interface TextCell {
+  id: string;
+  type: CellType;
+  language: SyntaxMode;
+  content: string;
+  title?: string;
+  collapsed?: boolean;
+}
+
 export interface CodeshareDocument {
   id: string;
   title: string;
   content: string;
+  cells?: TextCell[];
   createdAt: string;
   expiresAt: string;
   viewOnly: boolean;
