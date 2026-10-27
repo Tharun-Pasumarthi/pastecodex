@@ -103,9 +103,12 @@ export interface EncryptedFirebasePayload {
 export async function uploadEncryptedMediaToFirebase(
   codeshareId: string,
   file: File,
-  encryptionKey: string
+  encryptionKey: string,
+  customMediaId?: string
 ): Promise<AttachedMedia> {
   const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+  const mediaId = customMediaId || 'med_' + Math.random().toString(36).substr(2, 9);
+  const blobDocId = `${codeshareId}_${mediaId}`;
 
   // 1. Read file as Base64 Data URL
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
@@ -136,7 +139,10 @@ export async function uploadEncryptedMediaToFirebase(
     try {
       const CHUNK_SIZE = 450000; // ~450KB chunks to safely respect Firestore 1MB limits
       if (ciphertext.length <= CHUNK_SIZE) {
-        await setDoc(doc(services.db, 'encrypted_blobs', codeshareId), payload);
+        await Promise.all([
+          setDoc(doc(services.db, 'encrypted_blobs', blobDocId), payload),
+          setDoc(doc(services.db, 'encrypted_blobs', codeshareId), payload).catch(() => {}),
+        ]);
       } else {
         const chunks: string[] = [];
         for (let i = 0; i < ciphertext.length; i += CHUNK_SIZE) {
@@ -147,26 +153,27 @@ export async function uploadEncryptedMediaToFirebase(
           ciphertext: '',
           chunkCount: chunks.length,
         };
-        await setDoc(doc(services.db, 'encrypted_blobs', codeshareId), metaPayload);
-        await Promise.all(
-          chunks.map((chunk, idx) =>
-            setDoc(doc(services.db, 'encrypted_blobs', `${codeshareId}_chk_${idx}`), {
+        await Promise.all([
+          setDoc(doc(services.db, 'encrypted_blobs', blobDocId), metaPayload),
+          setDoc(doc(services.db, 'encrypted_blobs', codeshareId), metaPayload).catch(() => {}),
+          ...chunks.map((chunk, idx) =>
+            setDoc(doc(services.db, 'encrypted_blobs', `${blobDocId}_chk_${idx}`), {
               chunk,
               idx,
             })
-          )
-        );
+          ),
+        ]);
       }
     } catch (err) {
       console.warn('[Firebase] Upload failed, falling back to local relay:', err);
-      await fallbackUpload(codeshareId, payload);
+      await fallbackUpload(blobDocId, payload);
     }
   } else {
-    await fallbackUpload(codeshareId, payload);
+    await fallbackUpload(blobDocId, payload);
   }
 
   return {
-    id: 'med_' + Math.random().toString(36).substr(2, 9),
+    id: mediaId,
     name: file.name,
     type: isPdf ? 'pdf' : 'image',
     mimeType: file.type || (isPdf ? 'application/pdf' : 'image/png'),
@@ -183,21 +190,28 @@ export async function uploadEncryptedMediaToFirebase(
  */
 export async function fetchAndDecryptMediaFromFirebase(
   codeshareId: string,
-  encryptionKey: string
+  encryptionKey: string,
+  mediaId?: string
 ): Promise<AttachedMedia | null> {
   try {
     let payload: EncryptedFirebasePayload | null = null;
     const services = getFirebaseServices();
+    const targetDocId = mediaId ? `${codeshareId}_${mediaId}` : codeshareId;
 
     if (services) {
       try {
-        const docSnap = await getDoc(doc(services.db, 'encrypted_blobs', codeshareId));
+        let docSnap = await getDoc(doc(services.db, 'encrypted_blobs', targetDocId));
+        if (!docSnap.exists() && mediaId) {
+          // Fallback to primary room doc
+          docSnap = await getDoc(doc(services.db, 'encrypted_blobs', codeshareId));
+        }
         if (docSnap.exists()) {
           payload = docSnap.data() as EncryptedFirebasePayload;
+          const sourceId = docSnap.id;
           if (payload.chunkCount && payload.chunkCount > 0) {
             const chunkDocs = await Promise.all(
               Array.from({ length: payload.chunkCount }, (_, idx) =>
-                getDoc(doc(services.db, 'encrypted_blobs', `${codeshareId}_chk_${idx}`))
+                getDoc(doc(services.db, 'encrypted_blobs', `${sourceId}_chk_${idx}`))
               )
             );
             const fullCiphertext = chunkDocs
@@ -213,7 +227,10 @@ export async function fetchAndDecryptMediaFromFirebase(
 
     // Fallback to local dev relay if not found in Firebase
     if (!payload) {
-      payload = await fallbackFetch(codeshareId);
+      payload = await fallbackFetch(targetDocId);
+      if (!payload && mediaId) {
+        payload = await fallbackFetch(codeshareId);
+      }
     }
 
     if (!payload || !payload.ciphertext || !payload.iv) {
@@ -228,7 +245,7 @@ export async function fetchAndDecryptMediaFromFirebase(
     );
 
     return {
-      id: 'med_fb_' + codeshareId,
+      id: mediaId || ('med_fb_' + codeshareId),
       name: payload.name,
       type: payload.type,
       mimeType: payload.mimeType,
@@ -245,24 +262,49 @@ export async function fetchAndDecryptMediaFromFirebase(
 }
 
 /**
+ * Fetch and decrypt multiple media files in parallel
+ */
+export async function fetchAndDecryptAllMediaFromFirebase(
+  codeshareId: string,
+  encryptionKey: string,
+  mediaListMeta: AttachedMedia[]
+): Promise<AttachedMedia[]> {
+  if (!mediaListMeta || mediaListMeta.length === 0) return [];
+  const results = await Promise.all(
+    mediaListMeta.map(async (meta) => {
+      // If already has dataUrl, keep it
+      if (meta.dataUrl && meta.dataUrl.length > 50) return meta;
+      const decrypted = await fetchAndDecryptMediaFromFirebase(codeshareId, encryptionKey, meta.id);
+      return decrypted || meta;
+    })
+  );
+  return results.filter(Boolean) as AttachedMedia[];
+}
+
+/**
  * Delete media from Firebase
  */
-export async function deleteMediaFromFirebase(codeshareId: string): Promise<boolean> {
+export async function deleteMediaFromFirebase(
+  codeshareId: string,
+  mediaId?: string
+): Promise<boolean> {
   const services = getFirebaseServices();
+  const targetDocId = mediaId ? `${codeshareId}_${mediaId}` : codeshareId;
+
   if (services) {
     try {
-      const docSnap = await getDoc(doc(services.db, 'encrypted_blobs', codeshareId));
+      const docSnap = await getDoc(doc(services.db, 'encrypted_blobs', targetDocId));
       if (docSnap.exists()) {
         const data = docSnap.data() as EncryptedFirebasePayload;
         if (data.chunkCount && data.chunkCount > 0) {
           await Promise.all(
             Array.from({ length: data.chunkCount }, (_, idx) =>
-              deleteDoc(doc(services.db, 'encrypted_blobs', `${codeshareId}_chk_${idx}`))
+              deleteDoc(doc(services.db, 'encrypted_blobs', `${targetDocId}_chk_${idx}`))
             )
           );
         }
       }
-      await deleteDoc(doc(services.db, 'encrypted_blobs', codeshareId));
+      await deleteDoc(doc(services.db, 'encrypted_blobs', targetDocId));
     } catch {
       // ignore
     }
@@ -270,7 +312,7 @@ export async function deleteMediaFromFirebase(codeshareId: string): Promise<bool
 
   // Also remove from local relay
   try {
-    await fetch(`/api/blobs/${codeshareId}`, { method: 'DELETE' });
+    await fetch(`/api/blobs/${targetDocId}`, { method: 'DELETE' });
   } catch {
     // ignore
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { AttachedMedia } from '../types';
 import {
   FileText,
@@ -10,12 +10,18 @@ import {
   ZoomOut,
   RotateCcw,
   ShieldCheck,
+  Plus,
+  Files,
 } from 'lucide-react';
 
 interface MediaViewerProps {
-  media: AttachedMedia;
-  onRemove: () => void;
-  onDownload: () => void;
+  media?: AttachedMedia | null;
+  mediaList?: AttachedMedia[];
+  activeMediaId?: string | null;
+  onSelectMedia?: (id: string) => void;
+  onRemove: (mediaId?: string) => void;
+  onDownload: (media?: AttachedMedia) => void;
+  onOpenFileUpload?: () => void;
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -33,25 +39,47 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
 export const MediaViewer: React.FC<MediaViewerProps> = ({
   media,
+  mediaList = [],
+  activeMediaId,
+  onSelectMedia,
   onRemove,
   onDownload,
+  onOpenFileUpload,
 }) => {
+  // Normalize current media to view
+  const allMedia = useMemo(() => {
+    if (mediaList.length > 0) return mediaList;
+    if (media) return [media];
+    return [];
+  }, [mediaList, media]);
+
+  const currentMedia = useMemo(() => {
+    if (activeMediaId) {
+      const found = allMedia.find((m) => m.id === activeMediaId);
+      if (found) return found;
+    }
+    return media || allMedia[0] || null;
+  }, [allMedia, activeMediaId, media]);
+
   const [zoom, setZoom] = useState(1);
   const [blobUrl, setBlobUrl] = useState<string>('');
 
   useEffect(() => {
-    if (!media.dataUrl) return;
+    if (!currentMedia?.dataUrl) {
+      setBlobUrl('');
+      return;
+    }
     try {
-      const blob = dataUrlToBlob(media.dataUrl);
+      const blob = dataUrlToBlob(currentMedia.dataUrl);
       const url = URL.createObjectURL(blob);
       setBlobUrl(url);
       return () => {
         URL.revokeObjectURL(url);
       };
     } catch {
-      setBlobUrl(media.dataUrl);
+      setBlobUrl(currentMedia.dataUrl);
     }
-  }, [media.dataUrl]);
+  }, [currentMedia?.dataUrl]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
@@ -60,13 +88,117 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   };
 
   const handleOpenExternal = () => {
-    const targetUrl = blobUrl || media.dataUrl;
+    if (!currentMedia) return;
+    const targetUrl = blobUrl || currentMedia.dataUrl;
     window.open(targetUrl, '_blank');
   };
 
+  if (!currentMedia) {
+    return (
+      <div style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#121418', color: 'var(--text-muted)' }}>
+        <Files size={48} style={{ opacity: 0.4, marginBottom: '1rem' }} />
+        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '0.5rem' }}>No attached files</h3>
+        <p style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>Attach multiple PDFs or Images to this encrypted room.</p>
+        {onOpenFileUpload && (
+          <button className="btn btn-primary btn-sm" onClick={onOpenFileUpload}>
+            <Plus size={14} /> Attach Files
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="media-viewer-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', background: '#121418', overflow: 'hidden' }}>
-      {/* Media Top Toolbar */}
+    <div
+      className="media-viewer-container"
+      style={{
+        flex: 1,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#121418',
+        overflow: 'hidden',
+      }}
+    >
+      {/* File Selector Tabs when multiple files are attached */}
+      {allMedia.length > 1 && (
+        <div
+          className="media-tabs-header"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#16191f',
+            borderBottom: '1px solid var(--border-light)',
+            padding: '0.35rem 0.75rem',
+            gap: '0.4rem',
+            overflowX: 'auto',
+            scrollbarWidth: 'none',
+          }}
+        >
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginRight: '0.35rem', whiteSpace: 'nowrap' }}>
+            Files ({allMedia.length}):
+          </span>
+
+          {allMedia.map((item) => {
+            const isActive = item.id === currentMedia.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSelectMedia && onSelectMedia(item.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.3rem 0.65rem',
+                  borderRadius: '6px',
+                  border: isActive ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid transparent',
+                  backgroundColor: isActive ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-tertiary)',
+                  color: isActive ? '#fff' : 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease',
+                }}
+                title={item.name}
+              >
+                {item.type === 'pdf' ? (
+                  <FileText size={14} color="#ef4444" />
+                ) : (
+                  <ImageIcon size={14} color="#3b82f6" />
+                )}
+                <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {item.name}
+                </span>
+              </button>
+            );
+          })}
+
+          {onOpenFileUpload && (
+            <button
+              onClick={onOpenFileUpload}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                padding: '0.25rem 0.5rem',
+                borderRadius: '6px',
+                border: '1px dashed var(--border-medium)',
+                backgroundColor: 'transparent',
+                color: '#60a5fa',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+              title="Add more files"
+            >
+              <Plus size={13} /> Add
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Media Active Toolbar */}
       <div
         className="media-top-toolbar"
         style={{
@@ -76,59 +208,65 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 1.25rem',
+          padding: '0 1rem',
           zIndex: 10,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {media.type === 'pdf' ? (
-            <div style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, overflow: 'hidden' }}>
+          {currentMedia.type === 'pdf' ? (
+            <div style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
               <FileText size={18} />
-              <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{media.name}</strong>
+              <strong style={{ color: '#fff', fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
+                {currentMedia.name}
+              </strong>
             </div>
           ) : (
-            <div style={{ color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ color: '#3b82f6', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
               <ImageIcon size={18} />
-              <strong style={{ color: '#fff', fontSize: '0.9rem' }}>{media.name}</strong>
+              <strong style={{ color: '#fff', fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '200px' }}>
+                {currentMedia.name}
+              </strong>
             </div>
           )}
 
           <span
             style={{
-              fontSize: '0.75rem',
+              fontSize: '0.725rem',
               color: 'var(--text-dim)',
               background: 'var(--bg-tertiary)',
-              padding: '0.15rem 0.5rem',
+              padding: '0.15rem 0.45rem',
               borderRadius: '4px',
               border: '1px solid var(--border-light)',
+              flexShrink: 0,
             }}
           >
-            {formatFileSize(media.size)}
+            {formatFileSize(currentMedia.size)}
           </span>
 
-          {media.isEncrypted && (
+          {currentMedia.isEncrypted && (
             <span
               style={{
-                fontSize: '0.75rem',
+                fontSize: '0.725rem',
                 color: '#34d399',
                 background: 'rgba(16, 185, 129, 0.12)',
                 border: '1px solid rgba(16, 185, 129, 0.3)',
-                padding: '0.15rem 0.55rem',
+                padding: '0.15rem 0.5rem',
                 borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.3rem',
                 fontWeight: 500,
+                flexShrink: 0,
               }}
             >
               <ShieldCheck size={12} />
-              <span>AES-256 Encrypted • Firebase Cloud</span>
+              <span>AES-256 Encrypted</span>
             </span>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {media.type === 'image' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}>
+          {currentMedia.type === 'image' && (
             <div
               style={{
                 display: 'flex',
@@ -138,37 +276,49 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 borderRadius: '6px',
                 padding: '0.15rem',
                 border: '1px solid var(--border-light)',
-                marginRight: '0.5rem',
+                marginRight: '0.25rem',
               }}
             >
               <button
                 className="btn-icon"
-                style={{ width: '28px', height: '28px' }}
+                style={{ width: '26px', height: '26px' }}
                 onClick={() => setZoom((z) => Math.min(z + 0.25, 3))}
                 title="Zoom in"
               >
-                <ZoomIn size={14} />
+                <ZoomIn size={13} />
               </button>
               <button
                 className="btn-icon"
-                style={{ width: '28px', height: '28px' }}
+                style={{ width: '26px', height: '26px' }}
                 onClick={() => setZoom((z) => Math.max(z - 0.25, 0.5))}
                 title="Zoom out"
               >
-                <ZoomOut size={14} />
+                <ZoomOut size={13} />
               </button>
               <button
                 className="btn-icon"
-                style={{ width: '28px', height: '28px' }}
+                style={{ width: '26px', height: '26px' }}
                 onClick={() => setZoom(1)}
                 title="Reset zoom"
               >
-                <RotateCcw size={14} />
+                <RotateCcw size={13} />
               </button>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', padding: '0 0.4rem', minWidth: '40px', textAlign: 'center' }}>
+              <span style={{ fontSize: '0.725rem', color: 'var(--text-muted)', padding: '0 0.3rem', minWidth: '36px', textAlign: 'center' }}>
                 {Math.round(zoom * 100)}%
               </span>
             </div>
+          )}
+
+          {onOpenFileUpload && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={onOpenFileUpload}
+              title="Attach more files"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <Plus size={13} />
+              <span className="nav-btn-text">Add File</span>
+            </button>
           )}
 
           <button
@@ -176,26 +326,26 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             onClick={handleOpenExternal}
             title="Open in new window"
           >
-            <ExternalLink size={14} />
-            <span>Pop out</span>
+            <ExternalLink size={13} />
+            <span className="nav-btn-text">Pop out</span>
           </button>
 
           <button
             className="btn btn-sm btn-primary"
-            onClick={onDownload}
+            onClick={() => onDownload(currentMedia)}
             title="Download file"
           >
-            <Download size={14} />
-            <span>Download</span>
+            <Download size={13} />
+            <span className="nav-btn-text">Download</span>
           </button>
 
           <button
             className="btn btn-sm btn-secondary"
             style={{ color: '#f87171' }}
-            onClick={onRemove}
-            title="Remove attachment"
+            onClick={() => onRemove(currentMedia.id)}
+            title="Delete this file"
           >
-            <Trash2 size={14} />
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
@@ -210,19 +360,19 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: media.type === 'image' ? '#181a1e' : '#2a2e35',
+          backgroundColor: currentMedia.type === 'image' ? '#181a1e' : '#2a2e35',
           backgroundImage:
-            media.type === 'image'
+            currentMedia.type === 'image'
               ? 'linear-gradient(45deg, #14161a 25%, transparent 25%), linear-gradient(-45deg, #14161a 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #14161a 75%), linear-gradient(-45deg, transparent 75%, #14161a 75%)'
               : 'none',
           backgroundSize: '20px 20px',
           backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
         }}
       >
-        {media.type === 'pdf' ? (
+        {currentMedia.type === 'pdf' ? (
           <iframe
-            src={blobUrl || media.dataUrl}
-            title={media.name}
+            src={blobUrl || currentMedia.dataUrl}
+            title={currentMedia.name}
             style={{
               width: '100%',
               height: '100%',
@@ -243,11 +393,11 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             }}
           >
             <img
-              src={media.dataUrl}
-              alt={media.name}
+              src={currentMedia.dataUrl}
+              alt={currentMedia.name}
               style={{
                 maxWidth: '90vw',
-                maxHeight: '80vh',
+                maxHeight: '75vh',
                 borderRadius: '8px',
                 boxShadow: '0 20px 30px rgba(0,0,0,0.6)',
                 border: '1px solid var(--border-medium)',

@@ -15,6 +15,7 @@ interface NavbarProps {
   currentUser: User | null;
   collaborators?: Collaborator[];
   attachedMedia?: AttachedMedia | null;
+  attachedMediaList?: AttachedMedia[];
   activeTab?: ActiveTab;
   onTabChange?: (tab: ActiveTab) => void;
   onOpenFileUpload?: () => void;
@@ -36,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   collaborators = [],
   attachedMedia,
+  attachedMediaList = [],
   activeTab = 'code',
   onTabChange,
   onOpenFileUpload,
@@ -114,70 +116,88 @@ export const Navbar: React.FC<NavbarProps> = ({
           </span>
         )}
 
-        {/* Content Tabs (Code vs Attached PDF/Image) */}
-        {isEditor && attachedMedia && onTabChange && (
-          <div
-            className="header__tabs"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              backgroundColor: 'var(--bg-tertiary)',
-              padding: '2px',
-              borderRadius: '6px',
-              border: '1px solid var(--border-light)',
-              marginLeft: '0.5rem',
-            }}
-          >
-            <button
-              onClick={() => onTabChange('code')}
+        {/* Content Tabs (Code vs Attached Files) */}
+        {(() => {
+          const mediaItems = attachedMediaList.length > 0 ? attachedMediaList : (attachedMedia ? [attachedMedia] : []);
+          if (!isEditor || mediaItems.length === 0 || !onTabChange) return null;
+          return (
+            <div
+              className="header__tabs"
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.35rem',
-                padding: '0.25rem 0.65rem',
-                fontSize: '0.775rem',
-                fontWeight: activeTab === 'code' ? 600 : 400,
-                color: activeTab === 'code' ? '#fff' : 'var(--text-muted)',
-                backgroundColor: activeTab === 'code' ? 'var(--color-primary)' : 'transparent',
-                borderRadius: '4px',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                backgroundColor: 'var(--bg-tertiary)',
+                padding: '2px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-light)',
+                marginLeft: '0.5rem',
+                overflowX: 'auto',
+                scrollbarWidth: 'none',
+                maxWidth: '320px',
               }}
             >
-              <Code2 size={13} />
-              <span className="nav-btn-text">Code</span>
-            </button>
+              <button
+                onClick={() => onTabChange('code')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.25rem 0.65rem',
+                  fontSize: '0.775rem',
+                  fontWeight: activeTab === 'code' ? 600 : 400,
+                  color: activeTab === 'code' ? '#fff' : 'var(--text-muted)',
+                  backgroundColor: activeTab === 'code' ? 'var(--color-primary)' : 'transparent',
+                  borderRadius: '4px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <Code2 size={13} />
+                <span className="nav-btn-text">Code</span>
+              </button>
 
-            <button
-              onClick={() => onTabChange(attachedMedia.type)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                padding: '0.25rem 0.65rem',
-                fontSize: '0.775rem',
-                fontWeight: activeTab !== 'code' ? 600 : 400,
-                color: activeTab !== 'code' ? '#fff' : 'var(--text-muted)',
-                backgroundColor: activeTab !== 'code' ? 'var(--color-primary)' : 'transparent',
-                borderRadius: '4px',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-              title={attachedMedia.name}
-            >
-              {attachedMedia.type === 'pdf' ? (
-                <FileText size={13} color={activeTab === 'pdf' ? '#fff' : '#ef4444'} />
-              ) : (
-                <ImageIcon size={13} color={activeTab === 'image' ? '#fff' : '#3b82f6'} />
-              )}
-              <span className="header-tab-filename" style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {attachedMedia.name}
-              </span>
-            </button>
-          </div>
-        )}
+              {mediaItems.map((m) => {
+                const isSelected = activeTab === m.id || (activeTab === m.type && mediaItems.length === 1);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => onTabChange(m.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.25rem 0.65rem',
+                      fontSize: '0.775rem',
+                      fontWeight: isSelected ? 600 : 400,
+                      color: isSelected ? '#fff' : 'var(--text-muted)',
+                      backgroundColor: isSelected ? 'var(--color-primary)' : 'transparent',
+                      borderRadius: '4px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
+                    }}
+                    title={m.name}
+                  >
+                    {m.type === 'pdf' ? (
+                      <FileText size={13} color={isSelected ? '#fff' : '#ef4444'} />
+                    ) : (
+                      <ImageIcon size={13} color={isSelected ? '#fff' : '#3b82f6'} />
+                    )}
+                    <span
+                      className="header-tab-filename"
+                      style={{ maxWidth: '85px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {m.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       <div className="header__right">
@@ -215,11 +235,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               className="btn btn-sm btn-secondary nav-action-btn"
               onClick={onOpenFileUpload}
-              title="Attach PDF or Image to this encrypted Codeshare"
+              title="Attach PDF or Images to this encrypted Codeshare"
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <Paperclip size={14} color="#3b82f6" />
-              <span className="nav-btn-text">{attachedMedia ? 'File' : 'Attach'}</span>
+              <span className="nav-btn-text">
+                {(attachedMediaList.length > 0 ? attachedMediaList.length : (attachedMedia ? 1 : 0)) > 0
+                  ? `Files (${attachedMediaList.length > 0 ? attachedMediaList.length : 1})`
+                  : 'Attach'}
+              </span>
             </button>
 
             {/* Save Button with Visual Feedback */}

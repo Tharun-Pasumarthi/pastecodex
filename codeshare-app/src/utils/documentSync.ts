@@ -21,11 +21,30 @@ export interface DocumentSyncData {
   expiration: ExpirationOption;
   encryptionKey?: string;
   attachedMedia?: AttachedMedia | null;
+  attachedMediaList?: AttachedMedia[];
   timestamp: number;
   senderId: string;
 }
 
 const LOCAL_STORAGE_PREFIX = 'codeshare_doc_';
+
+// Persistent BroadcastChannels cache for sub-millisecond instant cross-tab sync
+const broadcastChannels = new Map<string, BroadcastChannel>();
+export function getPersistentBroadcastChannel(id: string): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') return null;
+  if (!broadcastChannels.has(id)) {
+    try {
+      broadcastChannels.set(id, new BroadcastChannel(`codeshare_sync_${id}`));
+    } catch {
+      return null;
+    }
+  }
+  return broadcastChannels.get(id) || null;
+}
+
+// In-flight write tracking & trailing queue to eliminate write backlog and minimize latency
+const inFlightWrites = new Set<string>();
+const queuedWrites = new Map<string, DocumentSyncData>();
 
 export function sanitizeForFirestore(val: any): any {
   if (val === undefined) return null;
@@ -43,40 +62,29 @@ export function sanitizeForFirestore(val: any): any {
 }
 
 /**
- * Save document state locally, to Firestore Cloud, and to the server relay, and broadcast to other tabs
+ * High-performance Firestore cloud persister with write coalescing
  */
-export async function saveDocument(docData: DocumentSyncData): Promise<void> {
-  // 1. Local storage cache
-  try {
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}${docData.id}`, JSON.stringify(docData));
-  } catch {
-    // ignore
+async function scheduleFirestoreWrite(docData: DocumentSyncData): Promise<void> {
+  const id = docData.id;
+  if (inFlightWrites.has(id)) {
+    // Coalesce latest update to execute as soon as in-flight write completes
+    queuedWrites.set(id, docData);
+    return;
   }
 
-  // 2. Broadcast to other open tabs in the same browser (sub-millisecond latency)
-  try {
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel(`codeshare_sync_${docData.id}`);
-      channel.postMessage({
-        type: 'sync_update',
-        data: docData,
-      });
-      channel.close();
-    }
-  } catch {
-    // BroadcastChannel unsupported or blocked
-  }
-
-  // 3. Persist to Google Cloud Firestore if connected
+  inFlightWrites.add(id);
   try {
     const services = getFirebaseServices();
     if (services) {
       const cleanDoc: any = { ...docData };
+
+      // Keep document record under 3KB by stripping large base64 strings
+      // (encapsulated media blobs are stored separately in encrypted_blobs)
       if (!cleanDoc.attachedMedia) {
         delete cleanDoc.attachedMedia;
-      } else if (cleanDoc.attachedMedia.dataUrl && cleanDoc.attachedMedia.dataUrl.length > 700000) {
-        // Exceeds Firestore 1MB document limit - store metadata safely
+      } else if (cleanDoc.attachedMedia.dataUrl && cleanDoc.attachedMedia.dataUrl.length > 500000) {
         cleanDoc.attachedMedia = {
+          id: cleanDoc.attachedMedia.id,
           name: cleanDoc.attachedMedia.name,
           type: cleanDoc.attachedMedia.type,
           mimeType: cleanDoc.attachedMedia.mimeType,
@@ -84,27 +92,65 @@ export async function saveDocument(docData: DocumentSyncData): Promise<void> {
           dataUrl: '',
         };
       }
+
+      if (Array.isArray(cleanDoc.attachedMediaList)) {
+        cleanDoc.attachedMediaList = cleanDoc.attachedMediaList.map((m: AttachedMedia) => ({
+          id: m.id,
+          name: m.name,
+          type: m.type,
+          mimeType: m.mimeType,
+          size: m.size,
+          isEncrypted: m.isEncrypted,
+          uploadedAt: m.uploadedAt,
+          dataUrl: m.dataUrl && m.dataUrl.length < 50000 ? m.dataUrl : '',
+        }));
+      }
+
       const sanitized = sanitizeForFirestore(cleanDoc);
-      await setDoc(doc(services.db, 'codeshare_documents', docData.id), sanitized);
+      await setDoc(doc(services.db, 'codeshare_documents', id), sanitized);
     }
   } catch (err) {
-    console.warn('[Firestore] saveDocument error:', err);
-  }
-
-  // 4. Persist to server relay for other browsers / incognito windows
-  try {
-    await fetch(`/api/documents/${docData.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(docData),
-    });
-  } catch {
-    // Network or server offline
+    console.warn('[Firestore] write error:', err);
+  } finally {
+    inFlightWrites.delete(id);
+    if (queuedWrites.has(id)) {
+      const nextDoc = queuedWrites.get(id)!;
+      queuedWrites.delete(id);
+      scheduleFirestoreWrite(nextDoc);
+    }
   }
 }
 
 /**
- * Fetch latest document state: checks Firestore Cloud first, then server relay, then local storage
+ * Save document state locally and to Google Cloud Firestore with zero lag
+ */
+export async function saveDocument(docData: DocumentSyncData): Promise<void> {
+  // 1. Local storage cache (0ms immediate update)
+  try {
+    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}${docData.id}`, JSON.stringify(docData));
+  } catch {
+    // ignore
+  }
+
+  // 2. Broadcast to other open tabs in same browser (< 1ms sub-millisecond latency)
+  try {
+    const channel = getPersistentBroadcastChannel(docData.id);
+    if (channel) {
+      channel.postMessage({
+        type: 'sync_update',
+        data: docData,
+      });
+    }
+  } catch {
+    // BroadcastChannel unsupported or blocked
+  }
+
+  // 3. Persist to Google Cloud Firestore with coalesced queue (no request lag)
+  scheduleFirestoreWrite(docData);
+}
+
+/**
+ * Fetch latest document state: checks Firestore Cloud first, then local storage
  */
 export async function fetchDocument(id: string): Promise<DocumentSyncData | null> {
   // 1. Try Firestore Cloud if connected
@@ -128,26 +174,7 @@ export async function fetchDocument(id: string): Promise<DocumentSyncData | null
     // Firestore error
   }
 
-  // 2. Try server relay to get latest remote updates (only if returning valid json)
-  try {
-    const res = await fetch(`/api/documents/${id}`);
-    const contentType = res.headers.get('content-type') || '';
-    if (res.ok && contentType.includes('application/json')) {
-      const serverDoc = (await res.json()) as DocumentSyncData;
-      if (serverDoc && typeof serverDoc.content === 'string') {
-        try {
-          localStorage.setItem(`${LOCAL_STORAGE_PREFIX}${id}`, JSON.stringify(serverDoc));
-        } catch {
-          // ignore
-        }
-        return serverDoc;
-      }
-    }
-  } catch {
-    // server unreachable
-  }
-
-  // 3. Fallback to localStorage
+  // 2. Fallback to localStorage
   try {
     const cached = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}${id}`);
     if (cached) {
@@ -252,34 +279,9 @@ export function subscribeToRoomSync(
     // Firestore error
   }
 
-  // 4. Periodic server polling (every 1.5s) to sync across local network / different browsers
-  const intervalId = window.setInterval(async () => {
-    if (isClosed) return;
-    if (document.hidden) return;
-
-    try {
-      const res = await fetch(`/api/documents/${codeshareId}`);
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const serverDoc = (await res.json()) as DocumentSyncData;
-        if (
-          serverDoc &&
-          serverDoc.senderId !== mySenderId &&
-          serverDoc.timestamp > lastReceivedTimestamp
-        ) {
-          lastReceivedTimestamp = serverDoc.timestamp;
-          onRemoteUpdate(serverDoc);
-        }
-      }
-    } catch {
-      // ignore network errors
-    }
-  }, 1500);
-
   // Cleanup function
   return () => {
     isClosed = true;
-    window.clearInterval(intervalId);
     window.removeEventListener('storage', handleStorageEvent);
     if (firestoreUnsub) {
       firestoreUnsub();

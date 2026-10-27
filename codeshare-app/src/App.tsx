@@ -17,7 +17,11 @@ import {
   parseHashParams,
   unpackDocumentFromHashToken,
 } from './utils/crypto';
-import { fetchAndDecryptMediaFromFirebase, deleteMediaFromFirebase } from './utils/firebaseStorage';
+import {
+  fetchAndDecryptMediaFromFirebase,
+  fetchAndDecryptAllMediaFromFirebase,
+  deleteMediaFromFirebase,
+} from './utils/firebaseStorage';
 import { saveDocument, fetchDocument, subscribeToRoomSync, type DocumentSyncData } from './utils/documentSync';
 import { Check, Info } from 'lucide-react';
 
@@ -82,6 +86,7 @@ export function App() {
   // Encryption & Attached Media State (PDF / Images)
   const [encryptionKey, setEncryptionKey] = useState<string>(() => generateEncryptionKey());
   const [attachedMedia, setAttachedMedia] = useState<AttachedMedia | null>(null);
+  const [attachedMediaList, setAttachedMediaList] = useState<AttachedMedia[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>('code');
 
   const [settings, setSettings] = useState<EditorSettings>({
@@ -110,6 +115,8 @@ export function App() {
   encryptionKeyRef.current = encryptionKey;
   const attachedMediaRef = useRef(attachedMedia);
   attachedMediaRef.current = attachedMedia;
+  const attachedMediaListRef = useRef(attachedMediaList);
+  attachedMediaListRef.current = attachedMediaList;
 
   // Ensure documents are synchronously persisted even when the user closes the browser/tab
   useEffect(() => {
@@ -123,6 +130,7 @@ export function App() {
         expiration: expirationRef.current,
         encryptionKey: encryptionKeyRef.current,
         attachedMedia: attachedMediaRef.current,
+        attachedMediaList: attachedMediaListRef.current,
         timestamp: Date.now(),
         senderId: tabIdRef.current,
       });
@@ -278,7 +286,13 @@ export function App() {
             if (typeof docData.content === 'string') setContent(docData.content);
             if (docData.settings) setSettings(docData.settings);
             if (docData.expiration) setExpiration(docData.expiration);
-            if (docData.attachedMedia) setAttachedMedia(docData.attachedMedia);
+            if (docData.attachedMediaList && docData.attachedMediaList.length > 0) {
+              setAttachedMediaList(docData.attachedMediaList);
+              setAttachedMedia(docData.attachedMediaList[0]);
+            } else if (docData.attachedMedia) {
+              setAttachedMedia(docData.attachedMedia);
+              setAttachedMediaList([docData.attachedMedia]);
+            }
             if (docData.encryptionKey && !window.location.hash.startsWith('#key=')) {
               setEncryptionKey(docData.encryptionKey);
             }
@@ -297,10 +311,20 @@ export function App() {
 
         // Also check if there's attached media in local storage for this session
         try {
-          const cachedMedia = localStorage.getItem(`codeshare_media_${slug}`);
-          if (cachedMedia) {
-            const parsed = JSON.parse(cachedMedia) as AttachedMedia;
-            setAttachedMedia(parsed);
+          const cachedList = localStorage.getItem(`codeshare_media_list_${slug}`);
+          if (cachedList) {
+            const parsedList = JSON.parse(cachedList) as AttachedMedia[];
+            if (parsedList.length > 0) {
+              setAttachedMediaList(parsedList);
+              setAttachedMedia(parsedList[0]);
+            }
+          } else {
+            const cachedMedia = localStorage.getItem(`codeshare_media_${slug}`);
+            if (cachedMedia) {
+              const parsed = JSON.parse(cachedMedia) as AttachedMedia;
+              setAttachedMedia(parsed);
+              setAttachedMediaList([parsed]);
+            }
           }
         } catch {
           // ignore
@@ -328,6 +352,7 @@ export function App() {
         expiration: expirationRef.current,
         encryptionKey: encryptionKeyRef.current,
         attachedMedia: attachedMediaRef.current,
+        attachedMediaList: attachedMediaListRef.current,
         timestamp: Date.now(),
         senderId: tabIdRef.current,
       }),
@@ -345,12 +370,22 @@ export function App() {
         if (remoteData.expiration) {
           setExpiration(remoteData.expiration);
         }
-        if (remoteData.attachedMedia !== undefined) {
+        if (remoteData.attachedMediaList !== undefined) {
+          setAttachedMediaList(remoteData.attachedMediaList);
+          if (remoteData.attachedMediaList.length > 0) {
+            setAttachedMedia(remoteData.attachedMediaList[0]);
+          }
+        } else if (remoteData.attachedMedia !== undefined) {
           setAttachedMedia(remoteData.attachedMedia);
+          if (remoteData.attachedMedia) {
+            setAttachedMediaList([remoteData.attachedMedia]);
+          } else {
+            setAttachedMediaList([]);
+          }
         }
         window.setTimeout(() => {
           isApplyingRemoteUpdateRef.current = false;
-        }, 50);
+        }, 40);
       }
     );
 
@@ -359,7 +394,7 @@ export function App() {
     };
   }, [codeshareId]);
 
-  // Debounced auto-save to local storage, server relay, and real-time broadcast
+  // Fast responsive auto-save with coalescing (latency reduced to 40ms)
   useEffect(() => {
     if (!codeshareId) return;
     if (isApplyingRemoteUpdateRef.current) return;
@@ -373,16 +408,17 @@ export function App() {
         expiration,
         encryptionKey,
         attachedMedia,
+        attachedMediaList,
         timestamp: Date.now(),
         senderId: tabIdRef.current,
       };
       saveDocument(docData);
-    }, 80);
+    }, 40);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [codeshareId, docTitle, content, settings, expiration, encryptionKey, attachedMedia]);
+  }, [codeshareId, docTitle, content, settings, expiration, encryptionKey, attachedMedia, attachedMediaList]);
 
   // Handle Expiration updates (optional expiration)
   const handleUpdateExpiration = (exp: ExpirationOption) => {
@@ -418,54 +454,89 @@ export function App() {
   useEffect(() => {
     if (!codeshareId || !encryptionKey) return;
     let isMounted = true;
-    fetchAndDecryptMediaFromFirebase(codeshareId, encryptionKey).then((fbMedia) => {
-      if (isMounted && fbMedia) {
-        setAttachedMedia(fbMedia);
-      }
-    });
+
+    if (attachedMediaList.length > 0) {
+      fetchAndDecryptAllMediaFromFirebase(codeshareId, encryptionKey, attachedMediaList).then((fullList) => {
+        if (isMounted && fullList.length > 0) {
+          setAttachedMediaList(fullList);
+          if (fullList[0]) setAttachedMedia(fullList[0]);
+        }
+      });
+    } else {
+      fetchAndDecryptMediaFromFirebase(codeshareId, encryptionKey).then((fbMedia) => {
+        if (isMounted && fbMedia) {
+          setAttachedMedia(fbMedia);
+          setAttachedMediaList([fbMedia]);
+        }
+      });
+    }
+
     return () => {
       isMounted = false;
     };
-  }, [codeshareId, encryptionKey]);
+  }, [codeshareId, encryptionKey, attachedMediaList.length]);
 
   // Save attached media to session cache
-  const handleAttachMedia = (media: AttachedMedia) => {
-    setAttachedMedia(media);
-    setActiveTab(media.type);
-    if (codeshareId) {
-      try {
-        localStorage.setItem(`codeshare_media_${codeshareId}`, JSON.stringify(media));
-      } catch {
-        // quota exceeded or storage disabled
+  const handleAttachMultipleMedia = (newMediaList: AttachedMedia[]) => {
+    setAttachedMediaList((prev) => {
+      const combined = [...prev, ...newMediaList];
+      if (codeshareId) {
+        try {
+          localStorage.setItem(`codeshare_media_list_${codeshareId}`, JSON.stringify(combined));
+        } catch {
+          // ignore
+        }
       }
+      return combined;
+    });
+    if (newMediaList[0]) {
+      setAttachedMedia(newMediaList[0]);
+      setActiveTab(newMediaList[0].id);
     }
-    showToast(`Attached ${media.type.toUpperCase()} file to encrypted share!`);
+    showToast(`Attached ${newMediaList.length} file(s) to encrypted share!`);
   };
 
-  const handleRemoveMedia = () => {
+  const handleAttachMedia = (media: AttachedMedia) => {
+    handleAttachMultipleMedia([media]);
+  };
+
+  const handleRemoveMedia = (mediaId?: string) => {
     if (codeshareId) {
-      deleteMediaFromFirebase(codeshareId);
-      try {
-        localStorage.removeItem(`codeshare_media_${codeshareId}`);
-      } catch {
-        // ignore
-      }
+      deleteMediaFromFirebase(codeshareId, mediaId);
     }
-    setAttachedMedia(null);
-    setActiveTab('code');
+    setAttachedMediaList((prev) => {
+      const filtered = mediaId ? prev.filter((m) => m.id !== mediaId) : [];
+      if (codeshareId) {
+        try {
+          localStorage.setItem(`codeshare_media_list_${codeshareId}`, JSON.stringify(filtered));
+        } catch {
+          // ignore
+        }
+      }
+      if (filtered.length > 0) {
+        setAttachedMedia(filtered[0]);
+        setActiveTab(filtered[0].id);
+      } else {
+        setAttachedMedia(null);
+        setActiveTab('code');
+      }
+      return filtered;
+    });
     showToast('Attached file removed.');
   };
 
   // Handle download
-  const handleDownload = () => {
-    if (activeTab !== 'code' && attachedMedia) {
+  const handleDownload = (media?: AttachedMedia) => {
+    const targetMedia = media || attachedMediaList.find((m) => m.id === activeTab) || attachedMedia;
+    if (activeTab !== 'code' && targetMedia) {
       // Download attached PDF or image
       const link = document.createElement('a');
-      link.href = attachedMedia.dataUrl;
-      link.download = attachedMedia.name;
+      link.href = targetMedia.dataUrl;
+      link.download = targetMedia.name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      showToast(`Downloaded ${targetMedia.name}`);
       return;
     }
 
@@ -497,6 +568,7 @@ export function App() {
       expiration,
       encryptionKey,
       attachedMedia,
+      attachedMediaList,
       timestamp: Date.now(),
       senderId: tabIdRef.current,
     });
@@ -553,7 +625,13 @@ export function App() {
         if (typeof docData.content === 'string') setContent(docData.content);
         if (docData.settings) setSettings(docData.settings);
         if (docData.expiration) setExpiration(docData.expiration);
-        if (docData.attachedMedia) setAttachedMedia(docData.attachedMedia);
+        if (docData.attachedMediaList && docData.attachedMediaList.length > 0) {
+          setAttachedMediaList(docData.attachedMediaList);
+          setAttachedMedia(docData.attachedMediaList[0]);
+        } else if (docData.attachedMedia) {
+          setAttachedMedia(docData.attachedMedia);
+          setAttachedMediaList([docData.attachedMedia]);
+        }
         if (docData.encryptionKey && !key) {
           setEncryptionKey(docData.encryptionKey);
         }
@@ -621,6 +699,7 @@ export function App() {
         currentUser={currentUser}
         collaborators={collaborators}
         attachedMedia={attachedMedia}
+        attachedMediaList={attachedMediaList}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onOpenFileUpload={() => setIsFileUploadOpen(true)}
@@ -673,11 +752,15 @@ export function App() {
       {/* Editor & Media View */}
       {codeshareId && (
         <div className="editor-layout">
-          {activeTab !== 'code' && attachedMedia ? (
+          {activeTab !== 'code' && (attachedMediaList.length > 0 || attachedMedia) ? (
             <MediaViewer
               media={attachedMedia}
+              mediaList={attachedMediaList}
+              activeMediaId={activeTab !== 'code' ? activeTab : (attachedMediaList[0]?.id || null)}
+              onSelectMedia={(id) => setActiveTab(id)}
               onRemove={handleRemoveMedia}
               onDownload={handleDownload}
+              onOpenFileUpload={() => setIsFileUploadOpen(true)}
             />
           ) : (
             <EditorWorkspace
@@ -700,6 +783,7 @@ export function App() {
             onTogglePanel={(p) => setActivePanel(activePanel === p ? null : p)}
             onClosePanel={() => setActivePanel(null)}
             attachedMedia={attachedMedia}
+            attachedMediaList={attachedMediaList}
             onOpenFileUpload={() => setIsFileUploadOpen(true)}
           />
 
@@ -712,6 +796,7 @@ export function App() {
             collaborators={collaborators}
             encryptionKey={encryptionKey}
             attachedMedia={attachedMedia}
+            attachedMediaList={attachedMediaList}
             expiration={expiration}
             onUpdateExpiration={handleUpdateExpiration}
           />
@@ -721,6 +806,9 @@ export function App() {
             isOpen={isFileUploadOpen}
             onClose={() => setIsFileUploadOpen(false)}
             onAttachMedia={handleAttachMedia}
+            onAttachMultipleMedia={handleAttachMultipleMedia}
+            attachedMediaList={attachedMediaList}
+            onRemoveMedia={handleRemoveMedia}
             encryptionKey={encryptionKey}
           />
 

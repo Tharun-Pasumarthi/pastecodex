@@ -14,6 +14,7 @@ interface SidebarProps {
   onTogglePanel: (panel: 'settings' | 'about') => void;
   onClosePanel: () => void;
   attachedMedia?: AttachedMedia | null;
+  attachedMediaList?: AttachedMedia[];
   onOpenFileUpload?: () => void;
 }
 
@@ -28,6 +29,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTogglePanel,
   onClosePanel,
   attachedMedia,
+  attachedMediaList = [],
   onOpenFileUpload,
 }) => {
   return (
@@ -135,22 +137,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </select>
             </div>
 
-            {attachedMedia && (
-              <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  {attachedMedia.type === 'pdf' ? <FileText size={14} color="#ef4444" /> : <ImageIcon size={14} color="#3b82f6" />}
-                  <span>Attached {attachedMedia.type.toUpperCase()}:</span>
-                </div>
-                <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {attachedMedia.name}
-                </div>
-                {attachedMedia.isEncrypted && (
-                  <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '0.25rem' }}>
-                    🔒 AES-256 Encrypted in link
+            {(() => {
+              const items = attachedMediaList.length > 0 ? attachedMediaList : (attachedMedia ? [attachedMedia] : []);
+              if (items.length === 0) return null;
+              return (
+                <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'var(--bg-tertiary)', borderRadius: '6px', border: '1px solid var(--border-light)' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.45rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Attached Files ({items.length}):</span>
+                    {onOpenFileUpload && (
+                      <button onClick={onOpenFileUpload} style={{ fontSize: '0.75rem', color: '#60a5fa', cursor: 'pointer' }}>
+                        Manage
+                      </button>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', maxHeight: '130px', overflowY: 'auto' }}>
+                    {items.map((m) => (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.825rem', color: '#fff' }}>
+                        {m.type === 'pdf' ? <FileText size={14} color="#ef4444" style={{ flexShrink: 0 }} /> : <ImageIcon size={14} color="#3b82f6" style={{ flexShrink: 0 }} />}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--color-success)', fontSize: '0.8rem' }}>
               <Check size={14} /> Settings auto-applied
@@ -197,11 +207,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               className="btn-icon"
               onClick={onOpenFileUpload}
-              title={attachedMedia ? "Manage Attached File" : "Attach PDF / Image"}
+              title={(attachedMediaList.length > 0 ? attachedMediaList.length : (attachedMedia ? 1 : 0)) > 0 ? `Manage Attached Files (${attachedMediaList.length > 0 ? attachedMediaList.length : 1})` : "Attach PDF / Images"}
               style={{ position: 'relative' }}
             >
-              <Paperclip size={20} color={attachedMedia ? '#10b981' : 'currentColor'} />
-              {attachedMedia && (
+              <Paperclip size={20} color={(attachedMediaList.length > 0 || attachedMedia) ? '#10b981' : 'currentColor'} />
+              {(attachedMediaList.length > 0 || attachedMedia) && (
                 <span
                   style={{
                     position: 'absolute',

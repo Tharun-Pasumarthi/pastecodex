@@ -14,7 +14,7 @@ export type EditorTheme = 'monokai' | 'one-dark' | 'dracula' | 'light';
 
 export type KeymapMode = 'default' | 'sublime' | 'vim' | 'emacs';
 
-export type ActiveTab = 'code' | 'pdf' | 'image';
+export type ActiveTab = 'code' | 'pdf' | 'image' | string;
 
 export type ExpirationOption = 'never' | '1h' | '24h' | '7d' | '30d';
 
@@ -59,6 +59,7 @@ export interface CodeshareDocument {
   collaborators: Collaborator[];
   activeTab: ActiveTab;
   attachedMedia?: AttachedMedia | null;
+  attachedMediaList?: AttachedMedia[];
   encryptionKey?: string;
   isEncrypted?: boolean;
 }

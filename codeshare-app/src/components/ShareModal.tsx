@@ -12,6 +12,7 @@ interface ShareModalProps {
   isOwner?: boolean;
   encryptionKey?: string;
   attachedMedia?: AttachedMedia | null;
+  attachedMediaList?: AttachedMedia[];
   expiration: ExpirationOption;
   onUpdateExpiration: (exp: ExpirationOption) => void;
 }
@@ -25,6 +26,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   collaborators,
   encryptionKey = 'sec_k' + Math.random().toString(36).substring(2, 10),
   attachedMedia,
+  attachedMediaList = [],
   expiration,
   onUpdateExpiration,
 }) => {
@@ -78,35 +80,43 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         <div className="modal-body">
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
             Anyone with access to this URL will be able to access your code
-            {attachedMedia ? ` and encrypted ${attachedMedia.type === 'pdf' ? 'PDF document' : 'image'}` : ''} in real time.
+            {(() => {
+              const all = attachedMediaList.length > 0 ? attachedMediaList : (attachedMedia ? [attachedMedia] : []);
+              if (all.length === 1) return ` and encrypted ${all[0].name}`;
+              if (all.length > 1) return ` and ${all.length} encrypted attached files`;
+              return '';
+            })()} in real time.
           </p>
 
-          {attachedMedia && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.6rem',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid rgba(59, 130, 246, 0.25)',
-                borderRadius: '8px',
-                padding: '0.6rem 0.85rem',
-                marginBottom: '1rem',
-                fontSize: '0.825rem',
-              }}
-            >
-              {attachedMedia.type === 'pdf' ? (
-                <FileText size={16} color="#ef4444" />
-              ) : (
-                <ImageIcon size={16} color="#3b82f6" />
-              )}
-              <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                <strong style={{ color: '#fff' }}>Attached {attachedMedia.type.toUpperCase()}: </strong>
-                <span style={{ color: 'var(--text-muted)' }}>{attachedMedia.name}</span>
+          {(() => {
+            const all = attachedMediaList.length > 0 ? attachedMediaList : (attachedMedia ? [attachedMedia] : []);
+            if (all.length === 0) return null;
+            return (
+              <div
+                style={{
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  borderRadius: '8px',
+                  padding: '0.65rem 0.85rem',
+                  marginBottom: '1rem',
+                  fontSize: '0.825rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                  <strong style={{ color: '#fff' }}>Attached Files ({all.length}):</strong>
+                  <span style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 600 }}>🔒 Encrypted in Link</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '110px', overflowY: 'auto' }}>
+                  {all.map((item) => (
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)' }}>
+                      {item.type === 'pdf' ? <FileText size={14} color="#ef4444" /> : <ImageIcon size={14} color="#3b82f6" />}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <span style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 600 }}>Included in Link</span>
-            </div>
-          )}
+            );
+          })()}
 
           <div className="form-field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
