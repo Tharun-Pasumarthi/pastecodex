@@ -454,9 +454,9 @@ export function App() {
     };
   }, [codeshareId]);
 
-  // Real-time Collaborator Chat subscription
+  // Real-time Collaborator Chat subscription (waits for document & encryption key to load)
   useEffect(() => {
-    if (!codeshareId || !encryptionKey) return;
+    if (!codeshareId || !encryptionKey || !isDocLoaded) return;
     const initial = getLocalChatMessages(codeshareId);
     setChatMessages(initial);
 
@@ -475,7 +475,7 @@ export function App() {
     return () => {
       unsub();
     };
-  }, [codeshareId, encryptionKey, isChatOpen]);
+  }, [codeshareId, encryptionKey, isDocLoaded, isChatOpen]);
 
   const handleSendChatMessage = useCallback((text: string) => {
     if (!codeshareId || !text.trim()) return;

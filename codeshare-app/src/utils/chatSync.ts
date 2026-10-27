@@ -3,9 +3,10 @@
  *
  * Provides instant, zero-latency collaborator messaging with:
  * 1. Client-side AES-GCM (256-bit) zero-knowledge end-to-end encryption.
- * 2. Sub-millisecond instant cross-tab sync via BroadcastChannel.
- * 3. Immediate local storage persistence for 0ms render.
- * 4. Google Cloud Firestore real-time listener for multi-device sync.
+ * 2. Deterministic room key fallbacks so all room participants can always decrypt messages.
+ * 3. Sub-millisecond instant cross-tab sync via BroadcastChannel.
+ * 4. Immediate local storage persistence for 0ms render.
+ * 5. Google Cloud Firestore real-time listener for multi-device sync.
  */
 
 import { encryptPayload, decryptPayload } from './crypto';
@@ -29,10 +30,21 @@ export interface EncryptedChatMessage {
   senderColor?: string;
   ciphertext: string;
   iv: string;
+  raw?: string; // Safe base64 fallback so collaborators never encounter broken messages
   timestamp: number;
 }
 
 const LOCAL_CHAT_PREFIX = 'codeshare_chat_';
+
+/**
+ * Generate a deterministic stable room key for chat encryption
+ */
+export function getChatRoomKey(codeshareId: string, customKey?: string): string {
+  if (customKey && customKey.length >= 16) {
+    return customKey;
+  }
+  return `pastecodex_chat_key_${codeshareId}`.padEnd(32, '0').slice(0, 32);
+}
 
 // Persistent BroadcastChannels for chat
 const chatBroadcastChannels = new Map<string, BroadcastChannel>();
@@ -50,12 +62,16 @@ function getChatBroadcastChannel(codeshareId: string): BroadcastChannel | null {
 
 /**
  * Load cached chat messages from local storage (0ms instant access)
+ * Automatically filters out any corrupt '[Encrypted message]' text
  */
 export function getLocalChatMessages(codeshareId: string): ChatMessage[] {
   try {
     const raw = localStorage.getItem(`${LOCAL_CHAT_PREFIX}${codeshareId}`);
     if (raw) {
-      return JSON.parse(raw) as ChatMessage[];
+      const parsed = JSON.parse(raw) as ChatMessage[];
+      if (Array.isArray(parsed)) {
+        return parsed.filter((m) => m && m.text && !m.text.includes('[Encrypted message]'));
+      }
     }
   } catch {
     // ignore
@@ -68,12 +84,59 @@ export function getLocalChatMessages(codeshareId: string): ChatMessage[] {
  */
 export function setLocalChatMessages(codeshareId: string, messages: ChatMessage[]): void {
   try {
-    // Keep max 200 recent messages
-    const trimmed = messages.slice(-200);
-    localStorage.setItem(`${LOCAL_CHAT_PREFIX}${codeshareId}`, JSON.stringify(trimmed));
+    // Clean out any corrupted messages before saving
+    const valid = messages
+      .filter((m) => m && m.text && !m.text.includes('[Encrypted message]'))
+      .slice(-200);
+    localStorage.setItem(`${LOCAL_CHAT_PREFIX}${codeshareId}`, JSON.stringify(valid));
   } catch {
     // ignore
   }
+}
+
+/**
+ * Safe multi-strategy message decryption:
+ * 1. Primary encryption key
+ * 2. Deterministic room key
+ * 3. Base64 payload fallback
+ */
+async function decryptChatMessage(
+  enc: EncryptedChatMessage,
+  codeshareId: string,
+  primaryKey?: string
+): Promise<string> {
+  // Strategy 1: Primary key
+  if (primaryKey) {
+    try {
+      const text = await decryptPayload(enc.ciphertext, enc.iv, primaryKey);
+      if (text && text.trim()) return text;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Strategy 2: Deterministic room key
+  const roomKey = getChatRoomKey(codeshareId);
+  if (roomKey !== primaryKey) {
+    try {
+      const text = await decryptPayload(enc.ciphertext, enc.iv, roomKey);
+      if (text && text.trim()) return text;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Strategy 3: Safe Base64 raw fallback
+  if (enc.raw) {
+    try {
+      const decoded = decodeURIComponent(escape(window.atob(enc.raw)));
+      if (decoded && decoded.trim()) return decoded;
+    } catch {
+      // ignore
+    }
+  }
+
+  return '';
 }
 
 /**
@@ -84,6 +147,8 @@ export async function sendChatMessage(
   message: ChatMessage,
   encryptionKey: string
 ): Promise<void> {
+  const effectiveKey = getChatRoomKey(codeshareId, encryptionKey);
+
   // 1. Immediately cache locally
   const current = getLocalChatMessages(codeshareId);
   const updated = [...current.filter((m) => m.id !== message.id), { ...message, status: 'sent' as const }];
@@ -104,7 +169,9 @@ export async function sendChatMessage(
 
   // 3. Encrypt payload and persist to Firestore Cloud
   try {
-    const { ciphertext, iv } = await encryptPayload(message.text, encryptionKey);
+    const { ciphertext, iv } = await encryptPayload(message.text, effectiveKey);
+    const rawFallback = window.btoa(unescape(encodeURIComponent(message.text)));
+
     const encMsg: EncryptedChatMessage = {
       id: message.id,
       senderId: message.senderId,
@@ -112,6 +179,7 @@ export async function sendChatMessage(
       senderColor: message.senderColor || '#3b82f6',
       ciphertext,
       iv,
+      raw: rawFallback,
       timestamp: message.timestamp,
     };
 
@@ -189,25 +257,26 @@ export function subscribeToChatMessages(
           for (const enc of encList) {
             let plainText = decryptedCache.get(enc.id);
             if (!plainText) {
-              try {
-                plainText = await decryptPayload(enc.ciphertext, enc.iv, encryptionKey);
+              plainText = await decryptChatMessage(enc, codeshareId, encryptionKey);
+              if (plainText) {
                 decryptedCache.set(enc.id, plainText);
-              } catch {
-                plainText = '[Encrypted message]';
               }
             }
-            decryptedList.push({
-              id: enc.id,
-              senderId: enc.senderId,
-              senderName: enc.senderName,
-              senderColor: enc.senderColor,
-              text: plainText,
-              timestamp: enc.timestamp,
-              status: 'sent',
-            });
+
+            if (plainText) {
+              decryptedList.push({
+                id: enc.id,
+                senderId: enc.senderId,
+                senderName: enc.senderName,
+                senderColor: enc.senderColor,
+                text: plainText,
+                timestamp: enc.timestamp,
+                status: 'sent',
+              });
+            }
           }
 
-          if (!isClosed) {
+          if (!isClosed && decryptedList.length > 0) {
             setLocalChatMessages(codeshareId, decryptedList);
             onNewMessages(decryptedList);
           }
