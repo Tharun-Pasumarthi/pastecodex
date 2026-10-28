@@ -77,7 +77,8 @@ test('AES-GCM rejects tampered ciphertext or altered tag', async () => {
 });
 
 test('Stealth token masks the key and decodes correctly', () => {
-  const secretKey = '8f4c2e91b5a34d70';
+  const secretKeyBytes = crypto.getRandomValues(new Uint8Array(16));
+  const secretKey = Array.from(secretKeyBytes, (b) => b.toString(16).padStart(2, '0')).join('');
   // Simulate stealth token encoding (base64url)
   const payload = `k=${secretKey}`;
   const encoded = Buffer.from(encodeURIComponent(payload)).toString('base64')

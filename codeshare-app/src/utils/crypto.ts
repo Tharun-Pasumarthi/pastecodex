@@ -28,7 +28,7 @@ function base64ToBuffer(base64: string): Uint8Array {
  * Generate a random 256-bit AES encryption key in hex format
  */
 export function generateRandomKey(): string {
-  const array = new Uint8Array(16);
+  const array = new Uint8Array(32);
   window.crypto.getRandomValues(array);
   return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
@@ -40,14 +40,26 @@ export const generateEncryptionKey = generateRandomKey;
  */
 async function deriveKey(rawKey: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
-  const keyMaterial = await window.crypto.subtle.importKey(
+  const keyBytes = encoder.encode(rawKey);
+  // Use the provided key material directly as a 256-bit key when possible
+  // Otherwise hash it with SHA-256 to ensure proper length
+  if (keyBytes.byteLength === 32) {
+    return window.crypto.subtle.importKey(
+      'raw',
+      keyBytes,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+  const digest = await window.crypto.subtle.digest('SHA-256', keyBytes);
+  return window.crypto.subtle.importKey(
     'raw',
-    encoder.encode(rawKey.padEnd(32, '0').slice(0, 32)),
+    digest,
     { name: 'AES-GCM' },
     false,
     ['encrypt', 'decrypt']
   );
-  return keyMaterial;
 }
 
 /**
