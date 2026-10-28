@@ -25,6 +25,7 @@ import {
   generateShareableUrl,
   parseHashParams,
   unpackDocumentFromHashToken,
+  sanitizeBrowserAddressBar,
 } from './utils/crypto';
 import {
   fetchAndDecryptMediaFromFirebase,
@@ -221,12 +222,16 @@ export function App() {
     };
   }, []);
 
-  // Process and unpack zero-knowledge URL hash fragments (#key=...&d=...)
+  // Process and unpack zero-knowledge URL hash fragments (#key=...&d=... or #s=...)
   const processUrlHash = useCallback(async (hashStr: string) => {
     if (!hashStr) return;
     const { key, docToken } = parseHashParams(hashStr);
     if (key) {
       setEncryptionKey(key);
+      // Clean secret key from visible address bar after loading so onlookers cannot see it
+      setTimeout(() => {
+        sanitizeBrowserAddressBar();
+      }, 1500);
     }
     if (docToken && key) {
       const unpacked = await unpackDocumentFromHashToken<{
@@ -939,9 +944,9 @@ export function App() {
   const queryParams = new URLSearchParams(currentQuery);
   const saveCodeshareId = queryParams.get('saveCodeshare') || undefined;
 
-  // Active clean share URL with zero-knowledge encryption key in URL fragment (~75 chars)
+  // Active clean share URL with zero-knowledge encryption key cloaked in URL fragment
   const shareUrl = codeshareId
-    ? generateShareableUrl(codeshareId, encryptionKey, viewOnly)
+    ? generateShareableUrl(codeshareId, encryptionKey, viewOnly, true)
     : '';
 
   // Mobile navigation handlers
@@ -962,13 +967,10 @@ export function App() {
     showToast(`Added new ${type.toUpperCase()} cell!`, 'info');
   }, [settings.modeName, showToast]);
 
+  // Always pop up the files modal on mobile so users can see, manage, open, and upload files
   const handleOpenFilesFromMobile = useCallback(() => {
-    if (attachedMediaList.length > 0 || attachedMedia) {
-      setActiveTab(attachedMediaList[0]?.id || 'pdf');
-    } else {
-      setIsFileUploadOpen(true);
-    }
-  }, [attachedMedia, attachedMediaList]);
+    setIsFileUploadOpen(true);
+  }, []);
 
   return (
     <div className="app-container">
@@ -1148,6 +1150,7 @@ export function App() {
             onAttachMultipleMedia={handleAttachMultipleMedia}
             attachedMediaList={attachedMediaList}
             onRemoveMedia={handleRemoveMedia}
+            onSelectMedia={(id) => setActiveTab(id)}
             encryptionKey={encryptionKey}
           />
 

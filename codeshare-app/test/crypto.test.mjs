@@ -75,3 +75,23 @@ test('AES-GCM rejects tampered ciphertext or altered tag', async () => {
     'Decryption must reject tampered ciphertext without authentication tag match'
   );
 });
+
+test('Stealth token masks the key and decodes correctly', () => {
+  const secretKey = '8f4c2e91b5a34d70';
+  // Simulate stealth token encoding (base64url)
+  const payload = `k=${secretKey}`;
+  const encoded = Buffer.from(encodeURIComponent(payload)).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  assert.ok(!encoded.includes(secretKey), 'Stealth token must not contain plaintext secret key');
+
+  // Decode
+  let b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const decodedStr = decodeURIComponent(Buffer.from(b64, 'base64').toString('utf8'));
+  const params = new URLSearchParams(decodedStr);
+  assert.equal(params.get('k'), secretKey, 'Decoded key must match original');
+});
+

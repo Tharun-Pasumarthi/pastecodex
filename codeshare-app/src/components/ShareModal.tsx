@@ -1,6 +1,22 @@
 import React, { useState } from 'react';
-import { X, Copy, Check, Lock, ShieldCheck, Users, FileText, Image as ImageIcon, Key, Clock } from 'lucide-react';
+import {
+  X,
+  Copy,
+  Check,
+  Lock,
+  ShieldCheck,
+  Users,
+  FileText,
+  Image as ImageIcon,
+  Key,
+  Clock,
+  Link2,
+  Sparkles,
+  EyeOff,
+  Loader2,
+} from 'lucide-react';
 import type { Collaborator, AttachedMedia, ExpirationOption } from '../types';
+import { generateShareableUrl, shortenWithTinyUrl, sanitizeBrowserAddressBar } from '../utils/crypto';
 
 interface ShareModalProps {
   codeshareId: string;
@@ -32,22 +48,26 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [useEncryptedLink, setUseEncryptedLink] = useState(true);
+  const [useStealthCloak, setUseStealthCloak] = useState(true);
+  const [tinyUrl, setTinyUrl] = useState<string | null>(null);
+  const [isGeneratingTinyUrl, setIsGeneratingTinyUrl] = useState(false);
+  const [tinyCopied, setTinyCopied] = useState(false);
+  const [addressBarCleaned, setAddressBarCleaned] = useState(false);
 
   if (!isOpen) return null;
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const query = viewOnly ? '?v=1' : '';
-  const baseUrl = `${origin}/${codeshareId}${query}`;
-  const shareUrl = useEncryptedLink ? `${baseUrl}#key=${encryptionKey}` : baseUrl;
+  // Generate either stealth URL (masked key #s=...) or direct URL (#key=...)
+  const shareUrl = useEncryptedLink
+    ? generateShareableUrl(codeshareId, encryptionKey, viewOnly, useStealthCloak)
+    : generateShareableUrl(codeshareId, undefined, viewOnly);
 
-  // Instant zero-latency copy with immediate visual feedback
-  const handleCopy = () => {
+  const copyToClipboard = (text: string) => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(shareUrl);
+        navigator.clipboard.writeText(text);
       } else {
         const textArea = document.createElement('textarea');
-        textArea.value = shareUrl;
+        textArea.value = text;
         textArea.style.position = 'fixed';
         textArea.style.left = '-9999px';
         document.body.appendChild(textArea);
@@ -55,16 +75,46 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         document.execCommand('copy');
         document.body.removeChild(textArea);
       }
+      return true;
     } catch {
-      // ignore
+      return false;
     }
+  };
+
+  const handleCopy = () => {
+    copyToClipboard(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleCopyTinyUrl = () => {
+    if (!tinyUrl) return;
+    copyToClipboard(tinyUrl);
+    setTinyCopied(true);
+    setTimeout(() => setTinyCopied(false), 2000);
+  };
+
+  const handleCreateTinyUrl = async () => {
+    setIsGeneratingTinyUrl(true);
+    try {
+      const short = await shortenWithTinyUrl(shareUrl);
+      setTinyUrl(short);
+    } catch {
+      setTinyUrl(shareUrl);
+    } finally {
+      setIsGeneratingTinyUrl(false);
+    }
+  };
+
+  const handleCleanAddressBar = () => {
+    sanitizeBrowserAddressBar();
+    setAddressBarCleaned(true);
+    setTimeout(() => setAddressBarCleaned(false), 3000);
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-dialog" style={{ maxWidth: '560px' }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-dialog" style={{ maxWidth: '580px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {useEncryptedLink ? (
@@ -72,31 +122,26 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             ) : (
               <Users size={20} color="#3b82f6" />
             )}
-            <h4 className="modal-title">Share Codeshare</h4>
+            <h4 className="modal-title">Share Secure Codeshare</h4>
           </div>
           <button className="btn-icon" onClick={onClose} aria-label="Close dialog">
             <X size={18} />
           </button>
         </div>
 
-        <div className="modal-body">
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-            Anyone with access to this URL will be able to access your code
-            {(() => {
-              const all = attachedMediaList.length > 0 ? attachedMediaList : (attachedMedia ? [attachedMedia] : []);
-              if (all.length === 1) return ` and encrypted ${all[0].name}`;
-              if (all.length > 1) return ` and ${all.length} encrypted attached files`;
-              return '';
-            })()} in real time.
+        <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+            Collaborators with this URL can view and edit in real time with client-side end-to-end encryption.
           </p>
 
+          {/* Attached Files Notification */}
           {(() => {
             const all = attachedMediaList.length > 0 ? attachedMediaList : (attachedMedia ? [attachedMedia] : []);
             if (all.length === 0) return null;
             return (
               <div
                 style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
                   border: '1px solid rgba(59, 130, 246, 0.25)',
                   borderRadius: '8px',
                   padding: '0.65rem 0.85rem',
@@ -108,7 +153,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                   <strong style={{ color: '#fff' }}>Attached Files ({all.length}):</strong>
                   <span style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 600 }}>🔒 Encrypted in Link</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '110px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '90px', overflowY: 'auto' }}>
                   {all.map((item) => (
                     <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)' }}>
                       {item.type === 'pdf' ? <FileText size={14} color="#ef4444" /> : <ImageIcon size={14} color="#3b82f6" />}
@@ -120,15 +165,121 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             );
           })()}
 
+          {/* TINYURL / SHORT CLOAKED URL PROMINENT FEATURE */}
+          <div
+            style={{
+              backgroundColor: 'rgba(37, 99, 235, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.35)',
+              borderRadius: '10px',
+              padding: '0.85rem 1rem',
+              marginBottom: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Sparkles size={16} color="#60a5fa" />
+                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#fff' }}>
+                  TinyURL Short Link (Hides Key &amp; Content)
+                </span>
+              </div>
+              <span
+                style={{
+                  fontSize: '0.675rem',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#34d399',
+                  padding: '2px 6px',
+                  borderRadius: '10px',
+                  fontWeight: 600,
+                }}
+              >
+                Zero-Leak
+              </span>
+            </div>
+
+            <p style={{ fontSize: '0.775rem', color: 'var(--text-dim)', margin: '0 0 0.65rem' }}>
+              Obfuscates and hides the room ID, contents, and secret encryption key behind a clean short link so onlookers cannot inspect the URL.
+            </p>
+
+            {tinyUrl ? (
+              <div className="url-copy-group" style={{ marginBottom: '0.35rem' }}>
+                <input
+                  type="text"
+                  className="url-copy-input"
+                  readOnly
+                  value={tinyUrl}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                  style={{ color: '#60a5fa', fontWeight: 600 }}
+                />
+                <button
+                  className="btn btn-primary"
+                  onClick={handleCopyTinyUrl}
+                  title="Copy TinyURL"
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                >
+                  {tinyCopied ? <Check size={15} /> : <Copy size={15} />}
+                  <span>{tinyCopied ? 'Copied TinyURL!' : 'Copy TinyURL'}</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={handleCreateTinyUrl}
+                disabled={isGeneratingTinyUrl}
+                style={{
+                  width: '100%',
+                  padding: '0.55rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.85rem',
+                }}
+              >
+                {isGeneratingTinyUrl ? (
+                  <>
+                    <Loader2 size={16} className="spin" />
+                    <span>Shortening with TinyURL...</span>
+                  </>
+                ) : (
+                  <>
+                    <Link2 size={16} />
+                    <span>Create TinyURL (Hide Key &amp; URL)</span>
+                  </>
+                )}
+              </button>
+            )}
+            {tinyCopied && (
+              <div style={{ fontSize: '0.75rem', color: '#34d399', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                <Check size={13} /> TinyURL copied to clipboard!
+              </div>
+            )}
+          </div>
+
+          {/* Standard / Cloaked Share URL */}
           <div className="form-field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-              <label htmlFor="share-url" style={{ margin: 0 }}>
-                {useEncryptedLink ? 'Encrypted Share Link' : 'Standard Share Link'}
+              <label htmlFor="share-url" style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600 }}>
+                {useStealthCloak ? 'Cloaked Encrypted Link (Key Masked in #s=...)' : 'Direct Link (#key=...)'}
               </label>
               {useEncryptedLink && (
-                <span style={{ color: '#10b981', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Key size={12} /> Key in URL Hash
-                </span>
+                <button
+                  onClick={() => setUseStealthCloak(!useStealthCloak)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: useStealthCloak ? '#10b981' : '#f59e0b',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    padding: 0,
+                  }}
+                  title={useStealthCloak ? "Key is obfuscated so casual observers cannot read it" : "Switch to stealth masked key"}
+                >
+                  {useStealthCloak ? <EyeOff size={13} /> : <Key size={13} />}
+                  <span>{useStealthCloak ? 'Key Cloaked' : 'Key Visible'}</span>
+                </button>
               )}
             </div>
             <div className="url-copy-group">
@@ -141,12 +292,12 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
               <button
-                className="btn btn-primary"
+                className="btn btn-secondary"
                 onClick={handleCopy}
                 title="Copy to clipboard"
               >
-                {copied ? <Check size={16} /> : <Copy size={16} />}
-                <span>{copied ? 'Copied!' : 'Copy Link'}</span>
+                {copied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
+                <span>{copied ? 'Copied!' : 'Copy'}</span>
               </button>
             </div>
             {copied && (
@@ -156,15 +307,48 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             )}
           </div>
 
+          {/* Hide Key from Browser URL Bar on this device */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: '0.85rem',
+              padding: '0.65rem 0.85rem',
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: '8px',
+              border: '1px solid var(--border-light)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <EyeOff size={16} color="#3b82f6" />
+              <div>
+                <div style={{ fontSize: '0.825rem', fontWeight: 600, color: '#fff' }}>
+                  Clean Address Bar
+                </div>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>
+                  Hide the secret key from your current browser URL bar to stop shoulder-surfers.
+                </div>
+              </div>
+            </div>
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={handleCleanAddressBar}
+              style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem', whiteSpace: 'nowrap' }}
+            >
+              {addressBarCleaned ? '✓ Cleared!' : 'Clean Now'}
+            </button>
+          </div>
+
           {/* Encryption Toggle Switch */}
-          <div className="switch-container" style={{ marginTop: '1.25rem' }}>
+          <div className="switch-container" style={{ marginTop: '1.15rem' }}>
             <div className="switch-label-wrap">
               <span className="switch-label-title" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <ShieldCheck size={15} color="#10b981" />
-                <span>Zero-Knowledge Encryption (AES-GCM)</span>
+                <span>Zero-Knowledge Encryption (AES-GCM 256-bit)</span>
               </span>
               <span className="switch-label-desc">
-                Includes the secret key in the link fragment (#key=...). Browsers never transmit hash fragments to web servers, guaranteeing zero-knowledge privacy.
+                Includes the secret key in the link fragment. Web servers never receive URL hash fragments, ensuring true zero-knowledge privacy.
               </span>
             </div>
             <div
@@ -201,11 +385,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               <option value="7d">7 Days</option>
               <option value="30d">30 Days</option>
             </select>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.3rem' }}>
-              {expiration === 'never'
-                ? 'This link is permanent and will never expire.'
-                : `This link will automatically expire after ${expiration}.`}
-            </div>
           </div>
 
           {/* View Only Switch */}
@@ -227,8 +406,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             </div>
           </div>
 
-          <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid var(--border-light)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+          <div style={{ marginTop: '1.15rem', paddingTop: '0.85rem', borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
               <Users size={15} />
               <span>Active Collaborators ({collaborators.length})</span>
             </div>
@@ -280,3 +459,4 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     </div>
   );
 };
+

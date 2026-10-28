@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, FileText, Image as ImageIcon, Shield, Check, AlertCircle, Trash2, Plus } from 'lucide-react';
+import { X, Upload, FileText, Image as ImageIcon, Shield, Check, AlertCircle, Trash2, Plus, Eye } from 'lucide-react';
 import type { AttachedMedia } from '../types';
 import { uploadEncryptedMediaToFirebase } from '../utils/firebaseStorage';
 
@@ -11,6 +11,7 @@ interface FileUploadModalProps {
   onAttachMultipleMedia?: (mediaList: AttachedMedia[]) => void;
   attachedMediaList?: AttachedMedia[];
   onRemoveMedia?: (id: string) => void;
+  onSelectMedia?: (id: string) => void;
   encryptionKey: string;
 }
 
@@ -22,6 +23,7 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
   onAttachMultipleMedia,
   attachedMediaList = [],
   onRemoveMedia,
+  onSelectMedia,
   encryptionKey,
 }) => {
   const [dragActive, setDragActive] = useState(false);
@@ -344,16 +346,38 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
                         </div>
                       </div>
                     </div>
-                    {onRemoveMedia && (
-                      <button
-                        className="btn-icon"
-                        onClick={() => onRemoveMedia(media.id)}
-                        title="Delete attached file"
-                        style={{ color: '#ef4444', padding: '0.3rem' }}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                      {onSelectMedia && (
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={() => {
+                            onSelectMedia(media.id);
+                            onClose();
+                          }}
+                          style={{
+                            padding: '0.25rem 0.55rem',
+                            fontSize: '0.75rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                          }}
+                          title="Open and view this file"
+                        >
+                          <Eye size={13} />
+                          <span>View</span>
+                        </button>
+                      )}
+                      {onRemoveMedia && (
+                        <button
+                          className="btn-icon"
+                          onClick={() => onRemoveMedia(media.id)}
+                          title="Delete attached file"
+                          style={{ color: '#ef4444', padding: '0.3rem' }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
